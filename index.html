@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b1830" />
   <link rel="manifest" href="manifest.json" />
-  <title>CogBlock V2</title>
+  <title>CogBlock V3</title>
   <style>
     :root{
       --bg:#091426; --bg2:#132746; --panel:#0d1b33; --panel2:#10213e;
@@ -206,7 +206,7 @@
 <!-- ═══════════ SUBJECT ID OVERLAY ═══════════ -->
 <div id="subjectOverlay" class="overlay">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:10px"><span class="badge">V2</span></div>
+    <div style="text-align:center;margin-bottom:10px"><span class="badge">V3</span></div>
     <h2>CogBlock</h2>
     <p class="modal-hint">Enter your Subject ID to begin.</p>
     <div class="field-row">
@@ -223,7 +223,7 @@
 <!-- ═══════════ REFRESHER OVERLAY ═══════════ -->
 <div id="refresherOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V2</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V3</span></div>
     <h2>Pattern Refresher</h2>
     <p class="modal-hint">Dot quantity matches line quantity. Match dots→lines or lines→dots.</p>
     <div class="panel" style="margin-bottom:12px">
@@ -254,11 +254,11 @@
 <!-- ═══════════ RESULTS OVERLAY ═══════════ -->
 <div id="resultsOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V2</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V3</span></div>
     <h2>Test Results</h2>
     <div class="panel result" id="resultsPageBox"></div>
-    <canvas id="resultsCpsChart" class="chart" width="380" height="150"></canvas>
-    <canvas id="resultsSpfChart" class="chart" width="380" height="150"></canvas>
+    <canvas id="resultsRTChart" class="chart" width="380" height="220" style="margin-top:10px"></canvas>
+    <canvas id="resultsCombinedChart" class="chart" width="380" height="200"></canvas>
     <div class="controls four" style="margin-top:12px">
       <button class="ctrl-btn" id="resultsBackBtn">← Start</button>
       <button class="ctrl-btn" id="resultsStartOverBtn">Reset</button>
@@ -287,8 +287,7 @@
     <div id="adminBody" class="hidden">
       <div style="text-align:center;margin-bottom:8px"><span class="badge">Admin</span></div>
       <div class="admin-fields" id="adminSettings"></div>
-      <canvas id="adminCpsChart" class="chart" width="380" height="150"></canvas>
-      <canvas id="adminSpfChart" class="chart" width="380" height="150"></canvas>
+      <canvas id="adminCombinedChart" class="chart" width="380" height="200"></canvas>
       <div id="adminBenchmarkNote" style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px"></div>
       <div class="controls" style="margin-top:10px">
         <button class="ctrl-btn" id="saveAdminBtn">Save</button>
@@ -312,7 +311,7 @@
   <!-- topbar -->
   <div class="topbar">
     <div class="topbar-left" id="modeLabel">Subject mode</div>
-    <div style="text-align:center"><span class="badge">V2</span></div>
+    <div style="text-align:center"><span class="badge">V3</span></div>
     <div class="topbar-right" id="phaseLabel">Ready</div>
   </div>
 
@@ -356,7 +355,7 @@
     <button class="ctrl-btn" id="startOverBtn">Full Reset</button>
   </div>
 
-  <div class="statusline" id="statusLine">CogBlock V2 ready.</div>
+  <div class="statusline" id="statusLine">CogBlock V3 ready.</div>
   <div class="panel result hidden" id="resultBox"></div>
 
 </div>

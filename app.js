@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V2 — dots/lines layout rebuild
+//  CogBlock V3 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -79,11 +79,11 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v2_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v3_settings") || "null");
   return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v2_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v3_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -98,8 +98,11 @@ const state = {
   overloads: [],
   recoveries: [],
   recoveryCorrectCompleted: 0,
-  history: JSON.parse(localStorage.getItem("cogblock_v2_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v3_history") || "[]"),
   totalTrials: 0,
+  totalResponses: 0,     // every tap during paced phase (correct or wrong)
+  pacedErrors: 0,        // wrong taps during paced phase only
+  testStartTime: null,   // performance.now() at test start
   trialTimer: null,
   absoluteNoResponseTimer: null,
   lastFiveAnswers: [],
@@ -108,9 +111,12 @@ const state = {
   calibrationTrialIndex: 0,
   calibrationRTs: [],
   calibrationErrors: 0,
+  pacedRTs: [],          // correct paced response times (ms)
+  rtLog: [],             // {seq, rt, correct, phase} for every paced tap + missed
   trialOpenedAt: null,
   geo: null,
-  benchmark: null
+  benchmark: null,
+  lastResultText: null
 };
 
 // ─── DOM refs ───
@@ -136,6 +142,11 @@ let deferredPrompt = null;
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
+function stdDev(a) {
+  if (a.length < 2) return null;
+  const m = mean(a);
+  return Math.sqrt(a.reduce((sum, v) => sum + (v - m) ** 2, 0) / (a.length - 1));
+}
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -397,41 +408,100 @@ function finishCalibration() {
   const pacedStart = clamp(avg * settings.initialPacedPercent, settings.minDurationMs, settings.maxDurationMs);
   state.duration = pacedStart;
   state.phase = "paced";
+  state.testStartTime = performance.now();
   setStatus(`Machine-paced start: ${pacedStart.toFixed(1)} ms`);
   openTrial("paced");
+}
+
+function formatDuration(ms) {
+  if (ms == null) return "—";
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
 function finish() {
   clearTimer(); clearNoResponseTimer();
   state.phase = "finished";
-  const avg2 = avgLast2Blocks();
-  const cps  = avg2 != null ? computeCPS(avg2) : null;
+
+  const avg2      = avgLast2Blocks();
+  const cps       = avg2 != null ? computeCPS(avg2) : null;
+  const sd        = stdDev(state.pacedRTs);
+  const blockDiff = state.overloads.length >= 2
+    ? state.overloads[state.overloads.length - 1] - state.overloads[state.overloads.length - 2]
+    : null;
+  const testDurMs = state.testStartTime != null ? performance.now() - state.testStartTime : null;
+
   const result = {
-    subjectId: subjectKey(state.subjectId || "0"),
-    samnPerelli: state.samnPerelli,
-    calibrationAverageMs: state.calibrationRTs.length ? mean(state.calibrationRTs) : null,
-    blocks: [...state.overloads],
+    subjectId:                  subjectKey(state.subjectId || "0"),
+    samnPerelli:                state.samnPerelli,
+    calibrationAverageMs:       state.calibrationRTs.length ? mean(state.calibrationRTs) : null,
+    blocks:                     [...state.overloads],
+    blockCount:                 state.overloads.length,
     averageLast2BlockingScoresMs: avg2,
-    cognitivePerformanceScore: cps,
-    endReason: state.endReason || "Run complete",
-    time: new Date().toISOString(),
-    geo: state.geo
+    blockScoreDifferenceMs:     blockDiff,
+    cognitivePerformanceScore:  cps,
+    totalResponses:             state.totalResponses,
+    pacedErrors:                state.pacedErrors,
+    pacedResponseCount:         state.pacedRTs.length,
+    pacedResponseMeanMs:        state.pacedRTs.length ? mean(state.pacedRTs) : null,
+    pacedResponseSdMs:          sd,
+    testDurationMs:             testDurMs,
+    rtLog:                      [...state.rtLog],
+    endReason:                  state.endReason || "Run complete",
+    time:                       new Date().toISOString(),
+    geo:                        state.geo
   };
+
   state.history.push(result);
-  localStorage.setItem("cogblock_v2_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v3_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
-  const fatigueText = state.samnPerelli ? `${state.samnPerelli.score} — ${state.samnPerelli.label}` : "not recorded";
-  const text = `CogBlock V2
+  // ── build clean readable results text ──
+  const hr  = "─────────────────────────";
+  const spf = result.samnPerelli
+    ? `${result.samnPerelli.score}  (${result.samnPerelli.label})`
+    : "not recorded";
+  const blockList = result.blocks.length
+    ? result.blocks.map((b, i) => `  Block ${i + 1}: ${b.toFixed(0)} ms`).join("\n")
+    : "  none";
+  const diffStr = blockDiff != null
+    ? `${blockDiff > 0 ? "+" : ""}${blockDiff.toFixed(0)} ms  (${blockDiff > 0 ? "slower" : blockDiff < 0 ? "faster" : "no change"})`
+    : "—";
 
-Subject ID: ${result.subjectId}
-Samn–Perelli: ${fatigueText}
-Calibration avg: ${result.calibrationAverageMs != null ? result.calibrationAverageMs.toFixed(1) + " ms" : "—"}
-Avg last 2 blocks: ${avg2 != null ? avg2.toFixed(1) + " ms" : "—"}
-CPS: ${cps != null ? cps.toFixed(1) : "—"}
-End reason: ${result.endReason}`;
+  const text =
+`CogBlock V3  —  Test Results
+${hr}
+Date / Time:   ${new Date(result.time).toLocaleString()}
+Subject ID:    ${result.subjectId}
+${hr}
+FATIGUE (S-PF)
+  Pre-test rating:  ${spf}
+${hr}
+CALIBRATION
+  Average RT:  ${result.calibrationAverageMs != null ? result.calibrationAverageMs.toFixed(1) + " ms" : "—"}
+${hr}
+MACHINE-PACED PERFORMANCE
+  Block scores:
+${blockList}
+  Avg last 2 blocks:   ${avg2 != null ? avg2.toFixed(1) + " ms" : "—"}
+  Block score diff:    ${diffStr}
+  CPS:                 ${cps != null ? cps.toFixed(1) + " / 100" : "—"}
+${hr}
+RESPONSE STATISTICS
+  Total responses:     ${result.totalResponses}
+  Correct (paced):     ${result.pacedResponseCount}
+  Errors (paced):      ${result.pacedErrors}
+  Mean paced RT:       ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
+  Paced RT SD:         ${sd != null ? sd.toFixed(1) + " ms" : "—"}
+  Test duration:       ${formatDuration(testDurMs)}
+${hr}
+END REASON
+  ${result.endReason}`;
 
+  state.lastResultText = text;
   showResultsPage(text);
 }
 
@@ -465,7 +535,10 @@ function onPacedFrameEnd() {
   if (state.phase !== "paced") return;
   state.totalTrials += 1;
   const currentMissed = state.current && state.current.kind === "paced" && !state.current.resolved;
-  if (currentMissed) { if (recordAnswer(false)) return; }
+  if (currentMissed) {
+    state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "missed" });
+    if (recordAnswer(false)) return;
+  }
   state.unresolvedStreak = currentMissed ? state.unresolvedStreak + 1 : 0;
   if (state.unresolvedStreak >= settings.consecutiveMissesForBlock) {
     state.blockDuration = state.duration;
@@ -548,16 +621,27 @@ function handleTap(index, btnEl) {
   // Paced phase: allow late response to previous or current
   if (state.previous && state.previous.kind === "paced" && !state.previous.resolved && trialMatches(state.previous, index)) {
     state.previous.resolved = true;
+    state.totalResponses += 1;
+    const rt = performance.now() - state.trialOpenedAt;
+    state.pacedRTs.push(rt);
+    state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced" });
     flashBtn(index, true);
     if (recordAnswer(true)) return;
     return;
   }
   if (state.current && state.current.kind === "paced" && !state.current.resolved && trialMatches(state.current, index)) {
     state.current.resolved = true;
+    state.totalResponses += 1;
+    const rt = performance.now() - state.trialOpenedAt;
+    state.pacedRTs.push(rt);
+    state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced" });
     flashBtn(index, true);
     if (recordAnswer(true)) return;
     return;
   }
+  state.totalResponses += 1;
+  state.pacedErrors += 1;
+  state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "paced" });
   flashBtn(index, false);
   recordAnswer(false);
 }
@@ -636,38 +720,256 @@ function resetAdmin() {
 //  CHARTS
 // ═══════════════════════════════════════════════════
 
-function drawSimpleLineChart(canvas, values, label) {
+// ═══════════════════════════════════════════════════
+//  CHARTS — combined CPS / Block Score / S-PF
+// ═══════════════════════════════════════════════════
+
+function drawCombinedChart(canvas, hist) {
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#d7e7f8"; ctx.font = "14px sans-serif"; ctx.fillText(label, 10, 18);
-  ctx.strokeStyle = "#7fd7ff"; ctx.lineWidth = 2;
-  if (!values.length) { ctx.fillStyle = "#d7e7f8"; ctx.fillText("No data yet", 10, 40); return; }
-  const max = Math.max(...values), min = Math.min(...values);
-  const span = (max - min) || 1;
-  ctx.beginPath();
-  values.forEach((v, i) => {
-    const x = 12 + i * ((canvas.width - 24) / Math.max(1, values.length - 1));
-    const y = canvas.height - 16 - ((v - min) / span) * (canvas.height - 40);
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { top: 28, right: 14, bottom: 36, left: 44 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+
+  // Background
+  ctx.fillStyle = "#081321";
+  ctx.fillRect(0, 0, W, H);
+
+  if (!hist.length) {
+    ctx.fillStyle = "#d7e7f8";
+    ctx.font = "bold 13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No data yet", W / 2, H / 2);
+    ctx.textAlign = "left";
+    return;
+  }
+
+  // Extract series (last 20 sessions)
+  const slice = hist.slice(-20);
+  const n = slice.length;
+
+  const cpsVals   = slice.map(x => x.cognitivePerformanceScore);      // 0–100
+  const blockVals = slice.map(x => x.averageLast2BlockingScoresMs);    // ms
+  const spfVals   = slice.map(x => x.samnPerelli ? x.samnPerelli.score : null); // 1–7
+
+  // Normalize block scores to 0–100 range for overlay (lower ms = better = higher on chart)
+  const blockValid = blockVals.filter(v => v != null);
+  const blockMin = blockValid.length ? Math.min(...blockValid) : 0;
+  const blockMax = blockValid.length ? Math.max(...blockValid) : 1;
+  const blockSpan = (blockMax - blockMin) || 1;
+  const blockNorm = blockVals.map(v => v != null ? 100 - ((v - blockMin) / blockSpan) * 100 : null);
+
+  // SPF normalised to 0–100 (1–7 → 0–100)
+  const spfNorm = spfVals.map(v => v != null ? ((v - 1) / 6) * 100 : null);
+
+  // Grid lines
+  ctx.strokeStyle = "rgba(79,111,153,0.3)";
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const y = PAD.top + (g / 4) * cH;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+    // Y axis labels (0–100)
+    ctx.fillStyle = "#7fa0c0";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(String(100 - g * 25), PAD.left - 4, y + 4);
+  }
+  ctx.textAlign = "left";
+
+  // X axis tick labels (session numbers)
+  ctx.fillStyle = "#7fa0c0";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  const xStep = n > 1 ? cW / (n - 1) : cW;
+  for (let i = 0; i < n; i++) {
+    const x = PAD.left + (n > 1 ? i * xStep : cW / 2);
+    ctx.fillText(String(i + 1), x, PAD.top + cH + 14);
+  }
+  ctx.textAlign = "left";
+
+  // Helper: draw a series
+  function drawSeries(normVals, color, dashed) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.2;
+    ctx.setLineDash(dashed || []);
+    ctx.beginPath();
+    let started = false;
+    normVals.forEach((v, i) => {
+      if (v == null) { started = false; return; }
+      const x = PAD.left + (n > 1 ? i * xStep : cW / 2);
+      const y = PAD.top + cH - (v / 100) * cH;
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dots
+    normVals.forEach((v, i) => {
+      if (v == null) return;
+      const x = PAD.left + (n > 1 ? i * xStep : cW / 2);
+      const y = PAD.top + cH - (v / 100) * cH;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+
+  drawSeries(cpsVals,   "#7fd7ff");          // CPS — solid cyan
+  drawSeries(blockNorm, "#ff9f40", [5, 3]);  // Block score — dashed orange
+  drawSeries(spfNorm,   "#a8ff78", [2, 4]);  // S-PF — dotted green
+
+  // Legend
+  const legend = [
+    { color: "#7fd7ff", label: "CPS (0–100)",    dash: [] },
+    { color: "#ff9f40", label: "Block score",     dash: [5, 3] },
+    { color: "#a8ff78", label: "S-PF (1–7)",      dash: [2, 4] }
+  ];
+  let lx = PAD.left;
+  legend.forEach(({ color, label, dash }) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(lx, 14); ctx.lineTo(lx + 18, 14); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color;
+    ctx.font = "bold 10px sans-serif";
+    ctx.fillText(label, lx + 22, 18);
+    lx += ctx.measureText(label).width + 46;
   });
-  ctx.stroke();
 }
 
 function renderHistoryGraphs() {
   const hist = state.history || [];
-  const cpsVals = hist.map(x => x.cognitivePerformanceScore).filter(v => v != null);
-  const spfVals = hist.map(x => x.samnPerelli ? x.samnPerelli.score : null).filter(v => v != null);
-  drawSimpleLineChart($("resultsCpsChart"), cpsVals.slice(-20), "CPS history");
-  drawSimpleLineChart($("resultsSpfChart"), spfVals.slice(-20), "S-PF history");
-  drawSimpleLineChart($("adminCpsChart"), cpsVals.slice(-20), "CPS history");
-  drawSimpleLineChart($("adminSpfChart"), spfVals.slice(-20), "S-PF history");
+  drawCombinedChart($("resultsCombinedChart"), hist);
+  drawCombinedChart($("adminCombinedChart"),   hist);
   const note = state.benchmark && state.benchmark.enabled
     ? `Device benchmark: avg frame ${state.benchmark.avgFrameMs.toFixed(2)} ms`
     : "Device benchmark off";
-  const rn = $("resultsNote"), an = $("adminBenchmarkNote");
-  if (rn) rn.textContent = note;
+  const an = $("adminBenchmarkNote");
   if (an) an.textContent = note;
+}
+
+function drawRTScatterChart(canvas, rtLog, blockScores, meanRT, sdRT) {
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  ctx.fillStyle = "#081321";
+  ctx.fillRect(0, 0, W, H);
+
+  const PAD = { top: 28, right: 14, bottom: 36, left: 52 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top - PAD.bottom;
+
+  // Filter to entries with actual RT values
+  const withRT = rtLog.filter(e => e.rt != null);
+
+  if (!withRT.length) {
+    ctx.fillStyle = "#d7e7f8";
+    ctx.font = "bold 13px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No paced responses recorded", W / 2, H / 2);
+    ctx.textAlign = "left";
+    return;
+  }
+
+  const n = rtLog.length;
+  const rtVals = withRT.map(e => e.rt);
+  const rtMax = Math.max(...rtVals, meanRT != null ? meanRT + (sdRT || 0) * 2 : 0);
+  const rtMin = 0;
+  const rtSpan = rtMax || 1;
+
+  function xOf(seq) { return PAD.left + ((seq - 1) / Math.max(1, n - 1)) * cW; }
+  function yOf(rt)  { return PAD.top + cH - (rt / rtSpan) * cH; }
+
+  // Grid lines
+  ctx.strokeStyle = "rgba(79,111,153,0.25)";
+  ctx.lineWidth = 1;
+  const yTicks = 5;
+  for (let g = 0; g <= yTicks; g++) {
+    const rt = (g / yTicks) * rtMax;
+    const y = yOf(rt);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+    ctx.fillStyle = "#7fa0c0";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(rt >= 1000 ? (rt / 1000).toFixed(1) + "s" : Math.round(rt) + "ms", PAD.left - 4, y + 4);
+  }
+  ctx.textAlign = "left";
+
+  // X axis label
+  ctx.fillStyle = "#7fa0c0";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Trial sequence →", PAD.left + cW / 2, H - 4);
+  ctx.textAlign = "left";
+
+  // SD band
+  if (meanRT != null && sdRT != null) {
+    const yTop    = yOf(Math.min(meanRT + sdRT, rtMax));
+    const yBottom = yOf(Math.max(meanRT - sdRT, 0));
+    ctx.fillStyle = "rgba(127,215,255,0.07)";
+    ctx.fillRect(PAD.left, yTop, cW, yBottom - yTop);
+  }
+
+  // Mean line
+  if (meanRT != null) {
+    const yM = yOf(meanRT);
+    ctx.strokeStyle = "rgba(127,215,255,0.5)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(PAD.left, yM); ctx.lineTo(PAD.left + cW, yM); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#7fd7ff";
+    ctx.font = "10px sans-serif";
+    ctx.fillText("mean", PAD.left + cW + 2, yM + 4);
+  }
+
+  // Block score markers (vertical lines at block events)
+  let blockSeq = 0;
+  blockScores.forEach((bs, i) => {
+    // find approximate seq where block happened — use cumulative trials
+    // we mark them evenly for now since we don't store exact seq per block
+    blockSeq = Math.round(((i + 1) / blockScores.length) * n);
+    const x = PAD.left + (blockSeq / Math.max(1, n)) * cW;
+    ctx.strokeStyle = "rgba(255,100,100,0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ff8888";
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(`B${i + 1}`, x, PAD.top - 4);
+    ctx.textAlign = "left";
+  });
+
+  // Missed/error dots (grey X markers)
+  rtLog.forEach(e => {
+    if (e.rt != null) return;
+    const x = xOf(e.seq);
+    const y = PAD.top + cH * 0.15; // park at top as "off-chart miss"
+    ctx.strokeStyle = e.phase === "missed" ? "rgba(180,120,60,0.7)" : "rgba(255,80,80,0.7)";
+    ctx.lineWidth = 1.5;
+    const r = 4;
+    ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r); ctx.stroke();
+  });
+
+  // Correct RT dots
+  withRT.forEach(e => {
+    const x = xOf(e.seq);
+    const y = yOf(e.rt);
+    ctx.fillStyle = "#7fd7ff";
+    ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Chart title
+  ctx.fillStyle = "#d7e7f8";
+  ctx.font = "bold 11px sans-serif";
+  ctx.fillText("Response Times  (● correct  × miss/error  ─ mean ± SD  B# block)", PAD.left, 16);
 }
 
 // ═══════════════════════════════════════════════════
@@ -678,14 +980,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v2_results.json";
+  a.download = "cogblock_v3_results.json";
   a.click();
 }
 
 function emailResults() {
-  const last = state.history[state.history.length - 1] || {};
-  const body = encodeURIComponent(JSON.stringify(last, null, 2));
-  window.location.href = `mailto:?subject=CogBlock V2&body=${body}`;
+  const text = state.lastResultText || "No results available.";
+  const body = encodeURIComponent(text);
+  window.location.href = `mailto:?subject=CogBlock V3 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -706,6 +1008,13 @@ function showResultsPage(text) {
   if (box) box.textContent = text;
   showOnly("resultsOverlay");
   renderHistoryGraphs();
+  // Draw RT scatter for the just-completed session
+  const last = state.history[state.history.length - 1];
+  if (last) {
+    const meanRT = last.pacedResponseMeanMs;
+    const sdRT   = last.pacedResponseSdMs;
+    drawRTScatterChart($("resultsRTChart"), last.rtLog || [], last.blocks || [], meanRT, sdRT);
+  }
   setTestingQuiet(false);
 }
 
@@ -718,10 +1027,13 @@ function clearCurrentSession() {
   state.overloads = []; state.recoveries = [];
   state.recoveryCorrectCompleted = 0;
   state.totalTrials = 0; state.endReason = "";
+  state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
   state.lastFiveAnswers = [];
   state.calibrationTrialIndex = 0;
   state.calibrationRTs = []; state.calibrationErrors = 0;
-  state.geo = null; state.benchmark = null;
+  state.pacedRTs = [];
+  state.rtLog = [];
+  state.geo = null; state.benchmark = null; state.lastResultText = null;
   updateCPSDisplay(null);
   updateMetrics();
   setProbeIdle();
@@ -759,9 +1071,12 @@ async function startTest() {
   state.overloads = []; state.recoveries = [];
   state.recoveryCorrectCompleted = 0;
   state.totalTrials = 0; state.endReason = "";
+  state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
   state.lastFiveAnswers = [];
   state.calibrationTrialIndex = 0;
   state.calibrationRTs = []; state.calibrationErrors = 0;
+  state.pacedRTs = [];
+  state.rtLog = [];
   setTestingQuiet(true);
   await captureGeoAndAddress();
   await runDeviceBenchmark();
@@ -815,7 +1130,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v2_admin.json"; a.click();
+  a.download = "cogblock_v3_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
