@@ -289,6 +289,17 @@
       color:var(--accent);font-size:13px;font-weight:600;
       text-decoration:underline;cursor:pointer;
     }
+
+    /* ── Benchmark overlay ── */
+    .bench-stat{display:grid;grid-template-columns:1fr auto;gap:4px;padding:6px 0;border-bottom:1px solid rgba(79,111,153,.3);font-size:13px;}
+    .bench-stat:last-of-type{border-bottom:none;}
+    .bench-label{color:var(--muted);font-weight:600;}
+    .bench-val{color:var(--text);font-weight:700;text-align:right;}
+    .bench-grade{font-size:28px;font-weight:900;text-align:center;margin:8px 0 4px;}
+    .bench-grade.a{color:#00ff88;text-shadow:0 0 20px rgba(0,255,136,.5);}
+    .bench-grade.b{color:#7fd7ff;text-shadow:0 0 20px rgba(127,215,255,.5);}
+    .bench-grade.c{color:#ff9f40;text-shadow:0 0 20px rgba(255,159,64,.5);}
+    .bench-grade.d{color:#ff4466;text-shadow:0 0 20px rgba(255,68,102,.5);}
   </style>
 </head>
 <body>
@@ -425,6 +436,22 @@
   </div>
 </div>
 
+<!-- ═══════════ BENCHMARK OVERLAY ═══════════ -->
+<div id="benchmarkOverlay" class="overlay hidden">
+  <div class="modal">
+    <div style="text-align:center;margin-bottom:6px"><span class="badge">Benchmark</span></div>
+    <h2 style="text-align:center;margin-bottom:4px">Device Benchmark</h2>
+    <p class="modal-hint" id="benchStatusLine">Running…</p>
+    <div id="benchGrade" class="bench-grade a" style="display:none"></div>
+    <div id="benchStats"></div>
+    <canvas id="benchChart" class="chart" width="380" height="160" style="margin-top:8px;display:none"></canvas>
+    <div class="controls" style="margin-top:12px;display:none" id="benchBtns">
+      <button class="ctrl-btn" id="benchRetestBtn">Retest</button>
+      <button class="ctrl-btn" id="benchAdminBtn">Return to Admin</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════ REFRESHER OVERLAY ═══════════ -->
 <div id="refresherOverlay" class="overlay hidden">
   <div class="modal">
@@ -498,6 +525,10 @@
       <canvas id="adminCombinedChart" class="chart" width="380" height="200"></canvas>
       <div id="adminBenchmarkNote" style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px"></div>
       <div class="controls" style="margin-top:10px">
+        <button class="ctrl-btn" id="runBenchmarkBtn" style="background:#0d2a1a;border-color:#00cc66;color:#00ff88">Run Benchmark</button>
+        <div></div>
+      </div>
+      <div class="controls" style="margin-top:6px">
         <button class="ctrl-btn" id="saveAdminBtn">Save</button>
         <button class="ctrl-btn" id="resetAdminBtn">Reset</button>
       </div>

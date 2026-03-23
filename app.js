@@ -1596,7 +1596,6 @@ async function startTest() {
   state.lastFrameDuration = null;
   setTestingQuiet(true);
   await captureGeoAndAddress();
-  await runDeviceBenchmark();
   noteAnyResponse();
   openTrial("calibration");
 }
@@ -1677,8 +1676,12 @@ const summaryReset   = $("summaryResetBtn");
 if (summaryRestart) summaryRestart.onclick = goToStartPage;
 if (summaryReset)   summaryReset.onclick   = startOverFlow;
 
-// Benchmark buttons
-const benchRetest = $("benchRetestBtn");
+// Benchmark button in admin
+const runBenchBtn = $("runBenchmarkBtn");
+if (runBenchBtn) runBenchBtn.onclick = async () => {
+  $("adminOverlay").classList.add("hidden");
+  await runDeviceBenchmark();
+};
 const benchAdmin  = $("benchAdminBtn");
 if (benchRetest) benchRetest.onclick = () => {
   // Hide overlay, re-run benchmark
