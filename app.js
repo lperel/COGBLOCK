@@ -427,44 +427,42 @@ function trialMatches(trial, index) {
 }
 
 function recordAnswer(ok, isMiss) {
-  // ── per-window wrong-answer check ──
-  state.lastFiveAnswers.push(ok);
-  if (state.lastFiveAnswers.length > settings.wrongWindowSize) state.lastFiveAnswers.shift();
-
-  // ── all-phase totals — misses are not tapped responses ──
+  // Misses (no tap) do NOT count toward roll mean or wrong-threshold —
+  // only actual tap responses count
   if (!isMiss) {
-    // already counted in handleTap for calibration/recovery/paced taps
-    // (paced correct/wrong counted there; here we only need the roll mean + stop checks)
-  }
+    // ── per-window wrong-answer check ──
+    state.lastFiveAnswers.push(ok);
+    if (state.lastFiveAnswers.length > settings.wrongWindowSize) state.lastFiveAnswers.shift();
 
-  // ── rolling mean check (all phases, including misses) ──
-  state.rollMeanLog.push(ok);
-  const win = Math.max(1, Math.round(Number(settings.rollMeanWindow) || 8));
-  if (state.rollMeanLog.length > win) state.rollMeanLog.shift();
-  if (state.rollMeanLog.length === win) {
-    const correctCount = state.rollMeanLog.filter(v => v === true).length;
-    const ratio = correctCount / win;
-    if (ratio < 0.70) {
-      state.endReason = `Too many wrong responses (${correctCount}/${win} correct = ${(ratio * 100).toFixed(0)}% — below 70% threshold)`;
+    // ── rolling mean check ──
+    state.rollMeanLog.push(ok);
+    const win = Math.max(1, Math.round(Number(settings.rollMeanWindow) || 8));
+    if (state.rollMeanLog.length > win) state.rollMeanLog.shift();
+    if (state.rollMeanLog.length === win) {
+      const correctCount = state.rollMeanLog.filter(v => v === true).length;
+      const ratio = correctCount / win;
+      if (ratio < 0.70) {
+        state.endReason = `Too many wrong responses (${correctCount}/${win} correct = ${(ratio * 100).toFixed(0)}% — below 70% threshold)`;
+        finish();
+        return true;
+      }
+    }
+
+    // ── wrong-threshold stop ──
+    const wc = state.lastFiveAnswers.filter(v => v === false).length;
+    if (state.lastFiveAnswers.length === settings.wrongWindowSize && wc > settings.wrongThresholdStop) {
+      state.endReason = `More than ${settings.wrongThresholdStop} wrong answers out of last ${settings.wrongWindowSize}. Restart required.`;
       finish();
       return true;
     }
   }
 
   updateMetrics();
-
-  // ── existing wrong-threshold stop ──
-  const wc = state.lastFiveAnswers.filter(v => v === false).length;
-  if (state.lastFiveAnswers.length === settings.wrongWindowSize && wc > settings.wrongThresholdStop) {
-    state.endReason = `More than ${settings.wrongThresholdStop} wrong answers out of last ${settings.wrongWindowSize}. Restart required.`;
-    finish();
-    return true;
-  }
   return false;
 }
 
 function avgLast2Blocks() {
-  if (state.overloads.length < 2) return state.overloads.length ? state.overloads[state.overloads.length - 1] : null;
+  if (state.overloads.length < 2) return null;
   return (state.overloads[state.overloads.length - 1] + state.overloads[state.overloads.length - 2]) / 2;
 }
 
