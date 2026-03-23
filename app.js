@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V3 — dots/lines layout rebuild
+//  CogBlock V5 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -13,6 +13,7 @@ const DEFAULTS = {
   wrongWindowSize: 5,
   wrongThresholdStop: 4,
   maxTrialCount: 180,
+  maxTestDurationMs: 120000,
   minDurationMs: 800,
   maxDurationMs: 10000,
   initialUnusedCalibrationTrials: 1,
@@ -29,8 +30,9 @@ const ADMIN_FIELDS = [
   ["speedupFactor","Speedup factor","number"],
   ["resumeSlowerByMs","Resume slower after block (ms)","number"],
   ["consecutiveMissesForBlock","Consecutive misses for block","number"],
-  ["recoveryCorrectTrials","Recovery correct trials","number"],
-  ["qualifyingBlockGapMs","Gap between consecutive blocks to end (ms)","number"],
+  ["recoveryCorrectTrials","Recovery correct trials (also final self-paced count)","number"],
+  ["qualifyingBlockGapMs","Max block diff to trigger end (ms)","number"],
+  ["maxTestDurationMs","Max total test time (ms)","number"],
   ["noResponseTimeoutMs","Time to end test if no response (ms)","number"],
   ["wrongWindowSize","Wrong-answer window size","number"],
   ["wrongThresholdStop","Wrong answers threshold","number"],
@@ -79,11 +81,11 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v3_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v5_settings") || "null");
   return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v3_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v5_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -98,13 +100,14 @@ const state = {
   overloads: [],
   recoveries: [],
   recoveryCorrectCompleted: 0,
-  history: JSON.parse(localStorage.getItem("cogblock_v3_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v5_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap during paced phase (correct or wrong)
   pacedErrors: 0,        // wrong taps during paced phase only
   testStartTime: null,   // performance.now() at test start
   trialTimer: null,
   absoluteNoResponseTimer: null,
+  maxTestTimer: null,
   lastFiveAnswers: [],
   samnPerelli: null,
   subjectId: null,
@@ -178,12 +181,24 @@ function clearNoResponseTimer() {
   if (state.absoluteNoResponseTimer) clearTimeout(state.absoluteNoResponseTimer);
   state.absoluteNoResponseTimer = null;
 }
+function clearMaxTestTimer() {
+  if (state.maxTestTimer) clearTimeout(state.maxTestTimer);
+  state.maxTestTimer = null;
+}
 function armNoResponseTimer() {
   clearNoResponseTimer();
   state.absoluteNoResponseTimer = setTimeout(() => {
     state.endReason = `No response for more than ${settings.noResponseTimeoutMs} ms`;
     finish();
   }, settings.noResponseTimeoutMs);
+}
+function armMaxTestTimer() {
+  clearMaxTestTimer();
+  const ms = Number(settings.maxTestDurationMs) || 120000;
+  state.maxTestTimer = setTimeout(() => {
+    state.endReason = `Maximum test time reached (${(ms/1000).toFixed(0)} s)`;
+    finish();
+  }, ms);
 }
 function noteAnyResponse() { armNoResponseTimer(); }
 
@@ -388,8 +403,9 @@ function avgLast2Blocks() {
 function maybeTriggerTerminalRule() {
   if (state.overloads.length < 2) return false;
   const n = state.overloads.length;
-  const gap = Math.abs(state.overloads[n - 1] - state.overloads[n - 2]);
-  if (gap < settings.qualifyingBlockGapMs) {
+  const diff = Math.abs(state.overloads[n - 1] - state.overloads[n - 2]);
+  if (diff < settings.qualifyingBlockGapMs) {
+    // 2 consecutive block scores within qualifyingBlockGapMs of each other — trigger final self-paced
     state.phase = "terminal_recovery";
     state.recoveryCorrectCompleted = 0;
     openTrial("terminal_recovery");
@@ -409,6 +425,7 @@ function finishCalibration() {
   state.duration = pacedStart;
   state.phase = "paced";
   state.testStartTime = performance.now();
+  armMaxTestTimer();
   setStatus(`Machine-paced start: ${pacedStart.toFixed(1)} ms`);
   openTrial("paced");
 }
@@ -422,7 +439,7 @@ function formatDuration(ms) {
 }
 
 function finish() {
-  clearTimer(); clearNoResponseTimer();
+  clearTimer(); clearNoResponseTimer(); clearMaxTestTimer();
   state.phase = "finished";
 
   const avg2      = avgLast2Blocks();
@@ -455,9 +472,22 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v3_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v5_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
+
+  // ── geo string ──
+  let geoStr = "unavailable";
+  if (result.geo) {
+    if (result.geo.status === "ok") {
+      geoStr = result.geo.address
+        ? result.geo.address
+        : `${result.geo.latitude.toFixed(5)}, ${result.geo.longitude.toFixed(5)}`;
+      geoStr += ` (±${Math.round(result.geo.accuracy_m)} m)`;
+    } else {
+      geoStr = result.geo.status;
+    }
+  }
 
   // ── build clean readable results text ──
   const hr  = "─────────────────────────";
@@ -472,10 +502,11 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V3  —  Test Results
+`CogBlock V5  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
+Location:      ${geoStr}
 ${hr}
 FATIGUE (S-PF)
   Pre-test rating:  ${spf}
@@ -553,7 +584,7 @@ function onPacedFrameEnd() {
   }
   state.duration = clamp(state.duration * settings.speedupFactor, settings.minDurationMs, settings.maxDurationMs);
   if (state.totalTrials >= settings.maxTrialCount) {
-    state.endReason = "Reached trial cap";
+    state.endReason = `Trial cap reached (${settings.maxTrialCount} trials)`;
     finish();
   } else {
     openTrial("paced");
@@ -730,11 +761,10 @@ function drawCombinedChart(canvas, hist) {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  const PAD = { top: 28, right: 14, bottom: 36, left: 44 };
+  const PAD = { top: 32, right: 52, bottom: 38, left: 48 };
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
 
-  // Background
   ctx.fillStyle = "#081321";
   ctx.fillRect(0, 0, W, H);
 
@@ -747,95 +777,160 @@ function drawCombinedChart(canvas, hist) {
     return;
   }
 
-  // Extract series (last 20 sessions)
   const slice = hist.slice(-20);
   const n = slice.length;
+  const xStep = n > 1 ? cW / (n - 1) : cW;
 
-  const cpsVals   = slice.map(x => x.cognitivePerformanceScore);      // 0–100
-  const blockVals = slice.map(x => x.averageLast2BlockingScoresMs);    // ms
-  const spfVals   = slice.map(x => x.samnPerelli ? x.samnPerelli.score : null); // 1–7
+  // ── Raw series values ──
+  const cpsVals   = slice.map(x => x.cognitivePerformanceScore ?? null);
+  const blockVals = slice.map(x => x.averageLast2BlockingScoresMs ?? null);
+  const spfVals   = slice.map(x => x.samnPerelli ? x.samnPerelli.score : null);
 
-  // Normalize block scores to 0–100 range for overlay (lower ms = better = higher on chart)
+  // ── Left axis: CPS 0–100 ──
+  const CPS_MIN = 0, CPS_MAX = 100;
+
+  // ── Right axis: block time (ms) — auto-scale from data ──
   const blockValid = blockVals.filter(v => v != null);
-  const blockMin = blockValid.length ? Math.min(...blockValid) : 0;
-  const blockMax = blockValid.length ? Math.max(...blockValid) : 1;
-  const blockSpan = (blockMax - blockMin) || 1;
-  const blockNorm = blockVals.map(v => v != null ? 100 - ((v - blockMin) / blockSpan) * 100 : null);
+  const blockRawMin = blockValid.length ? Math.min(...blockValid) : 0;
+  const blockRawMax = blockValid.length ? Math.max(...blockValid) : 3000;
+  // nice round ticks for right axis (block ms)
+  const blockAxisMax = Math.ceil(blockRawMax / 500) * 500 || 3000;
+  const blockAxisMin = Math.max(0, Math.floor(blockRawMin / 500) * 500);
 
-  // SPF normalised to 0–100 (1–7 → 0–100)
-  const spfNorm = spfVals.map(v => v != null ? ((v - 1) / 6) * 100 : null);
+  // ── Right axis: S-PF 1–7 (share the right axis, annotated separately) ──
+  const SPF_MIN = 1, SPF_MAX = 7;
 
-  // Grid lines
-  ctx.strokeStyle = "rgba(79,111,153,0.3)";
+  // Convert to Y pixel coords
+  function yLeft(v, lo, hi)  { return PAD.top + cH - ((v - lo) / ((hi - lo) || 1)) * cH; }
+  function xOf(i)             { return PAD.left + (n > 1 ? i * xStep : cW / 2); }
+
+  // ── Grid lines (based on left CPS axis, 5 lines 0/25/50/75/100) ──
+  ctx.strokeStyle = "rgba(79,111,153,0.25)";
   ctx.lineWidth = 1;
-  for (let g = 0; g <= 4; g++) {
-    const y = PAD.top + (g / 4) * cH;
+  [0, 25, 50, 75, 100].forEach(v => {
+    const y = yLeft(v, CPS_MIN, CPS_MAX);
     ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
-    // Y axis labels (0–100)
-    ctx.fillStyle = "#7fa0c0";
-    ctx.font = "10px sans-serif";
-    ctx.textAlign = "right";
-    ctx.fillText(String(100 - g * 25), PAD.left - 4, y + 4);
-  }
-  ctx.textAlign = "left";
+  });
 
-  // X axis tick labels (session numbers)
+  // ── Left Y axis: CPS labels ──
+  ctx.font = "10px sans-serif";
+  ctx.fillStyle = "#7fd7ff";
+  ctx.textAlign = "right";
+  [0, 25, 50, 75, 100].forEach(v => {
+    ctx.fillText(String(v), PAD.left - 4, yLeft(v, CPS_MIN, CPS_MAX) + 4);
+  });
+  // Left axis title
+  ctx.save();
+  ctx.translate(11, PAD.top + cH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = "#7fd7ff";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("CPS", 0, 0);
+  ctx.restore();
+
+  // ── Right Y axis: Block ms labels ──
+  ctx.fillStyle = "#ff9f40";
+  ctx.textAlign = "left";
+  const blockTicks = 5;
+  for (let t = 0; t <= blockTicks; t++) {
+    const v = blockAxisMin + (t / blockTicks) * (blockAxisMax - blockAxisMin);
+    // Map block ms to pixel using same pixel range but block scale
+    const y = PAD.top + cH - (t / blockTicks) * cH;
+    ctx.fillText(v >= 1000 ? (v/1000).toFixed(1)+"s" : Math.round(v)+"ms", PAD.left + cW + 4, y + 4);
+  }
+  // Right axis title
+  ctx.save();
+  ctx.translate(W - 6, PAD.top + cH / 2);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = "#ff9f40";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Block ms", 0, 0);
+  ctx.restore();
+
+  // ── X axis labels ──
   ctx.fillStyle = "#7fa0c0";
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
-  const xStep = n > 1 ? cW / (n - 1) : cW;
   for (let i = 0; i < n; i++) {
-    const x = PAD.left + (n > 1 ? i * xStep : cW / 2);
-    ctx.fillText(String(i + 1), x, PAD.top + cH + 14);
+    ctx.fillText(String(i + 1), xOf(i), PAD.top + cH + 14);
   }
+  ctx.fillText("Session →", PAD.left + cW / 2, PAD.top + cH + 28);
   ctx.textAlign = "left";
 
-  // Helper: draw a series
-  function drawSeries(normVals, color, dashed) {
+  // ── Helper: draw a series ──
+  function drawSeries(vals, toY, color, dashed) {
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.2;
     ctx.setLineDash(dashed || []);
     ctx.beginPath();
     let started = false;
-    normVals.forEach((v, i) => {
+    vals.forEach((v, i) => {
       if (v == null) { started = false; return; }
-      const x = PAD.left + (n > 1 ? i * xStep : cW / 2);
-      const y = PAD.top + cH - (v / 100) * cH;
+      const x = xOf(i), y = toY(v);
       if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
     });
     ctx.stroke();
     ctx.setLineDash([]);
-
-    // Dots
-    normVals.forEach((v, i) => {
+    vals.forEach((v, i) => {
       if (v == null) return;
-      const x = PAD.left + (n > 1 ? i * xStep : cW / 2);
-      const y = PAD.top + cH - (v / 100) * cH;
       ctx.fillStyle = color;
-      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(xOf(i), toY(v), 3.5, 0, Math.PI * 2); ctx.fill();
+      // value label above dot
+      ctx.fillStyle = color;
+      ctx.font = "9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(typeof v === "number" ? (v > 100 ? (v/1000).toFixed(1)+"s" : v.toFixed(0)) : "", xOf(i), toY(v) - 6);
+      ctx.textAlign = "left";
     });
   }
 
-  drawSeries(cpsVals,   "#7fd7ff");          // CPS — solid cyan
-  drawSeries(blockNorm, "#ff9f40", [5, 3]);  // Block score — dashed orange
-  drawSeries(spfNorm,   "#a8ff78", [2, 4]);  // S-PF — dotted green
+  // Normalize block ms to left-axis pixel space using its own scale
+  function yBlock(v) {
+    return PAD.top + cH - ((v - blockAxisMin) / ((blockAxisMax - blockAxisMin) || 1)) * cH;
+  }
+  function ySpf(v) {
+    return yLeft(v, SPF_MIN, SPF_MAX);
+  }
 
-  // Legend
+  drawSeries(cpsVals,   v => yLeft(v, CPS_MIN, CPS_MAX), "#7fd7ff");
+  drawSeries(blockVals, yBlock,  "#ff9f40", [5, 3]);
+  drawSeries(spfVals,   ySpf,   "#a8ff78", [2, 4]);
+
+  // ── S-PF right-side tick annotations (1–7) ──
+  ctx.fillStyle = "#a8ff78";
+  ctx.font = "9px sans-serif";
+  ctx.textAlign = "left";
+  [1, 4, 7].forEach(v => {
+    ctx.fillText(`${v}`, PAD.left + cW + 4, ySpf(v) + 3);
+  });
+  ctx.save();
+  ctx.translate(W - 6, PAD.top + cH * 0.25);
+  ctx.rotate(Math.PI / 2);
+  ctx.fillStyle = "#a8ff78";
+  ctx.font = "bold 9px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("S-PF", 0, 0);
+  ctx.restore();
+
+  // ── Legend ──
   const legend = [
-    { color: "#7fd7ff", label: "CPS (0–100)",    dash: [] },
-    { color: "#ff9f40", label: "Block score",     dash: [5, 3] },
-    { color: "#a8ff78", label: "S-PF (1–7)",      dash: [2, 4] }
+    { color: "#7fd7ff", label: "CPS",       dash: [] },
+    { color: "#ff9f40", label: "Block ms",  dash: [5, 3] },
+    { color: "#a8ff78", label: "S-PF",      dash: [2, 4] }
   ];
   let lx = PAD.left;
   legend.forEach(({ color, label, dash }) => {
     ctx.strokeStyle = color; ctx.lineWidth = 2;
     ctx.setLineDash(dash);
-    ctx.beginPath(); ctx.moveTo(lx, 14); ctx.lineTo(lx + 18, 14); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(lx, 16); ctx.lineTo(lx + 16, 16); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = color;
     ctx.font = "bold 10px sans-serif";
-    ctx.fillText(label, lx + 22, 18);
-    lx += ctx.measureText(label).width + 46;
+    ctx.textAlign = "left";
+    ctx.fillText(label, lx + 20, 20);
+    lx += ctx.measureText(label).width + 38;
   });
 }
 
@@ -980,14 +1075,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v3_results.json";
+  a.download = "cogblock_v5_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V3 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V5 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1019,7 +1114,7 @@ function showResultsPage(text) {
 }
 
 function clearCurrentSession() {
-  clearTimer(); clearNoResponseTimer();
+  clearTimer(); clearNoResponseTimer(); clearMaxTestTimer();
   state.phase = "idle";
   state.duration = null; state.blockDuration = null;
   state.current = null; state.previous = null;
@@ -1130,7 +1225,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v3_admin.json"; a.click();
+  a.download = "cogblock_v5_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1148,13 +1243,19 @@ $("resultsExportBtn").onclick= exportResults;
 $("resultsEmailBtn").onclick = emailResults;
 
 window.addEventListener("beforeinstallprompt", e => {
-  e.preventDefault(); deferredPrompt = e; $("installBtn").disabled = false;
+  e.preventDefault(); deferredPrompt = e;
+  $("installBtn").disabled = false;
+  setStatus("Install adds CogBlock V5 to your home screen for offline use.");
 });
 $("installBtn").onclick = async () => {
-  if (!deferredPrompt) return;
+  if (!deferredPrompt) {
+    setStatus("Install: adds this app to your home screen for offline use. Not available in this browser — try Chrome or Edge on Android.");
+    return;
+  }
   deferredPrompt.prompt();
-  await deferredPrompt.userChoice;
+  const choice = await deferredPrompt.userChoice;
   deferredPrompt = null;
+  setStatus(choice.outcome === "accepted" ? "App installed to home screen." : "Install cancelled.");
 };
 
 // ─── Init ───

@@ -1,6 +1,6 @@
 {
-  "name": "CogBlock V3",
-  "short_name": "CogBlockV3",
+  "name": "CogBlock V5",
+  "short_name": "CogBlockV5",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b1830",

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b1830" />
   <link rel="manifest" href="manifest.json" />
-  <title>CogBlock V3</title>
+  <title>CogBlock V5</title>
   <style>
     :root{
       --bg:#091426; --bg2:#132746; --panel:#0d1b33; --panel2:#10213e;
@@ -206,7 +206,7 @@
 <!-- ═══════════ SUBJECT ID OVERLAY ═══════════ -->
 <div id="subjectOverlay" class="overlay">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:10px"><span class="badge">V3</span></div>
+    <div style="text-align:center;margin-bottom:10px"><span class="badge">V5</span></div>
     <h2>CogBlock</h2>
     <p class="modal-hint">Enter your Subject ID to begin.</p>
     <div class="field-row">
@@ -223,7 +223,7 @@
 <!-- ═══════════ REFRESHER OVERLAY ═══════════ -->
 <div id="refresherOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V3</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V5</span></div>
     <h2>Pattern Refresher</h2>
     <p class="modal-hint">Dot quantity matches line quantity. Match dots→lines or lines→dots.</p>
     <div class="panel" style="margin-bottom:12px">
@@ -232,7 +232,7 @@
     <div class="controls four">
       <button class="ctrl-btn" id="skipRefresherBtn">Skip</button>
       <button class="ctrl-btn" id="continueRefresherBtn">Continue</button>
-      <button class="ctrl-btn" id="refBackBtn">← Start</button>
+      <button class="ctrl-btn" id="refBackBtn">Restart</button>
       <button class="ctrl-btn" id="refStartOverBtn">Reset</button>
     </div>
   </div>
@@ -245,7 +245,7 @@
     <p class="modal-hint">How do you feel right now?</p>
     <div class="fatigue-list" id="fatigueList"></div>
     <div class="controls" style="margin-top:12px">
-      <button class="ctrl-btn" id="fatigueBackBtn">← Start</button>
+      <button class="ctrl-btn" id="fatigueBackBtn">Restart</button>
       <button class="ctrl-btn" id="fatigueStartOverBtn">Reset</button>
     </div>
   </div>
@@ -254,13 +254,13 @@
 <!-- ═══════════ RESULTS OVERLAY ═══════════ -->
 <div id="resultsOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V3</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V5</span></div>
     <h2>Test Results</h2>
     <div class="panel result" id="resultsPageBox"></div>
     <canvas id="resultsRTChart" class="chart" width="380" height="220" style="margin-top:10px"></canvas>
     <canvas id="resultsCombinedChart" class="chart" width="380" height="200"></canvas>
     <div class="controls four" style="margin-top:12px">
-      <button class="ctrl-btn" id="resultsBackBtn">← Start</button>
+      <button class="ctrl-btn" id="resultsBackBtn">Restart</button>
       <button class="ctrl-btn" id="resultsStartOverBtn">Reset</button>
       <button class="ctrl-btn" id="resultsExportBtn">Export</button>
       <button class="ctrl-btn" id="resultsEmailBtn">Email</button>
@@ -280,7 +280,7 @@
       <div class="controls four">
         <button class="ctrl-btn" id="unlockBtn">Unlock</button>
         <button class="ctrl-btn" id="closeAdminBtn">Close</button>
-        <button class="ctrl-btn" id="adminBackBtn">← Start</button>
+        <button class="ctrl-btn" id="adminBackBtn">Restart</button>
         <button class="ctrl-btn" id="adminStartOverBtn">Reset</button>
       </div>
     </div>
@@ -298,7 +298,7 @@
         <button class="ctrl-btn" id="exportAdminBtn">Export</button>
       </div>
       <div class="controls" style="margin-top:6px">
-        <button class="ctrl-btn" id="adminBackBtn2">← Start</button>
+        <button class="ctrl-btn" id="adminBackBtn2">Restart</button>
         <button class="ctrl-btn" id="adminStartOverBtn2">Full Reset</button>
       </div>
     </div>
@@ -311,7 +311,7 @@
   <!-- topbar -->
   <div class="topbar">
     <div class="topbar-left" id="modeLabel">Subject mode</div>
-    <div style="text-align:center"><span class="badge">V3</span></div>
+    <div style="text-align:center"><span class="badge">V5</span></div>
     <div class="topbar-right" id="phaseLabel">Ready</div>
   </div>
 
@@ -351,11 +351,11 @@
     <button class="ctrl-btn" id="installBtn" disabled>Install</button>
   </div>
   <div class="controls">
-    <button class="ctrl-btn" id="backToStartBtn">← Start</button>
+    <button class="ctrl-btn" id="backToStartBtn">Restart</button>
     <button class="ctrl-btn" id="startOverBtn">Full Reset</button>
   </div>
 
-  <div class="statusline" id="statusLine">CogBlock V3 ready.</div>
+  <div class="statusline" id="statusLine">CogBlock V5 ready.</div>
   <div class="panel result hidden" id="resultBox"></div>
 
 </div>
