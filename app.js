@@ -415,8 +415,6 @@ async function runDeviceBenchmark() {
   }
 
   if (btnsEl) btnsEl.style.display = "grid";
-
-  await new Promise(resolve => { state._benchResolve = resolve; });
 }
 
 // ═══════════════════════════════════════════════════
@@ -1815,17 +1813,13 @@ if (runBenchBtn) runBenchBtn.onclick = async () => {
 };
 const benchAdmin  = $("benchAdminBtn");
 if (benchRetest) benchRetest.onclick = () => {
-  // Hide overlay, re-run benchmark
   const overlay = $("benchmarkOverlay");
   if (overlay) overlay.classList.add("hidden");
-  if (state._benchResolve) { state._benchResolve(); state._benchResolve = null; }
-  // Re-run after brief delay
   setTimeout(async () => { await runDeviceBenchmark(); }, 200);
 };
 if (benchAdmin) benchAdmin.onclick = () => {
   const overlay = $("benchmarkOverlay");
   if (overlay) overlay.classList.add("hidden");
-  if (state._benchResolve) { state._benchResolve(); state._benchResolve = null; }
   $("adminOverlay").classList.remove("hidden");
   $("adminGate").classList.add("hidden");
   $("adminBody").classList.remove("hidden");
