@@ -249,17 +249,15 @@ async function captureGeoAndAddress() {
 }
 
 // ─── Device benchmark ───
-// Measures processor speed by running trial generation + rendering as fast as possible.
-// Also measures setTimeout timer accuracy over 100 scheduled trials.
-// Shows its own results page with grade, stats and chart.
+// Phase 1: how fast can the processor generate + render 100 trials?
+// Phase 2: how accurately does setTimeout(0) fire — measures JS scheduler overhead.
+// Both phases run as fast as the processor allows — no deliberate waits.
 async function runDeviceBenchmark() {
   const enabled = Number(settings.deviceBenchmarkEnabled || 0) === 1;
   if (!enabled) { state.benchmark = null; return; }
 
-  const BENCH_TRIALS   = 100;
-  const BENCH_DURATION = 1000; // scheduled ms per timed trial
+  const BENCH_TRIALS = 100;
 
-  // Show benchmark overlay
   const overlay     = $("benchmarkOverlay");
   const statusLine  = $("benchStatusLine");
   const statsBox    = $("benchStats");
@@ -267,65 +265,65 @@ async function runDeviceBenchmark() {
   const chartCanvas = $("benchChart");
   const btnsEl      = $("benchBtns");
 
-  if (overlay) overlay.classList.remove("hidden");
-  if (gradeEl) gradeEl.style.display = "none";
+  if (overlay)     overlay.classList.remove("hidden");
+  if (gradeEl)     gradeEl.style.display  = "none";
   if (chartCanvas) chartCanvas.style.display = "none";
-  if (btnsEl) btnsEl.style.display = "none";
-  if (statsBox) statsBox.innerHTML = "";
+  if (btnsEl)      btnsEl.style.display   = "none";
+  if (statsBox)    statsBox.innerHTML      = "";
 
-  // ── Phase 1: Processor speed — how fast can we generate + render trials? ──
+  // ── Phase 1: Processor speed — generate + render trials as fast as possible ──
   if (statusLine) statusLine.textContent = "Phase 1: Measuring processor speed…";
+  await new Promise(r => setTimeout(r, 50)); // allow UI to update
+
   const procTimes = [];
   for (let i = 0; i < BENCH_TRIALS; i++) {
     const t0 = performance.now();
     const trial = makeTrial("paced", i > 0 ? i % 6 : null);
-    renderTrial(trial);   // full DOM render
-    const t1 = performance.now();
-    procTimes.push(t1 - t0);
-    // Yield to browser every 10 trials to keep UI responsive
-    if (i % 10 === 9) await new Promise(r => setTimeout(r, 0));
-    if (statusLine) statusLine.textContent = `Phase 1: ${i + 1}/${BENCH_TRIALS} trials…`;
+    renderTrial(trial);
+    procTimes.push(performance.now() - t0);
+    if (statusLine && i % 10 === 9)
+      statusLine.textContent = `Phase 1: ${i + 1}/${BENCH_TRIALS} trials…`;
   }
-  setProbeIdle(); // clean up after rendering
+  setProbeIdle();
 
-  const avgProcMs  = mean(procTimes);
-  const minProcMs  = Math.min(...procTimes);
-  const maxProcMs  = Math.max(...procTimes);
-  const procSd     = stdDev(procTimes) || 0;
-  // Theoretical minimum presentation rate based on render time
+  const avgProcMs      = mean(procTimes);
+  const minProcMs      = Math.min(...procTimes);
+  const maxProcMs      = Math.max(...procTimes);
+  const procSd         = stdDev(procTimes) || 0;
   const minPossibleDurMs = Math.ceil(avgProcMs + procSd * 2);
 
-  // ── Phase 2: Timer accuracy — scheduled vs actual setTimeout duration ──
-  if (statusLine) statusLine.textContent = "Phase 2: Measuring timer accuracy (100 trials)…";
-  const drifts = [];
+  // ── Phase 2: Scheduler overhead — how fast does setTimeout(0) actually fire? ──
+  if (statusLine) statusLine.textContent = "Phase 2: Measuring scheduler speed…";
+  await new Promise(r => setTimeout(r, 50));
 
+  const schedTimes = [];
   await new Promise(resolve => {
     let n = 0;
-    function nextTrial() {
+    function next() {
       if (n >= BENCH_TRIALS) { resolve(); return; }
       const t0 = performance.now();
       setTimeout(() => {
-        drifts.push((performance.now() - t0) - BENCH_DURATION);
+        schedTimes.push(performance.now() - t0);
         n++;
-        if (n % 10 === 0 && statusLine)
-          statusLine.textContent = `Phase 2: ${n}/${BENCH_TRIALS} trials…`;
-        nextTrial();
-      }, BENCH_DURATION);
+        if (statusLine && n % 10 === 0)
+          statusLine.textContent = `Phase 2: ${n}/${BENCH_TRIALS} scheduler calls…`;
+        next();
+      }, 0);
     }
-    nextTrial();
+    next();
   });
 
-  const avgDrift  = mean(drifts);
-  const maxDrift  = Math.max(...drifts);
-  const minDrift  = Math.min(...drifts);
-  const driftSd   = stdDev(drifts) || 0;
+  const avgSchedMs = mean(schedTimes);
+  const minSchedMs = Math.min(...schedTimes);
+  const maxSchedMs = Math.max(...schedTimes);
+  const schedSd    = stdDev(schedTimes) || 0;
 
   // ── Scores ──
-  // Timer score: 100 = avg drift <1ms, 0 = >50ms
-  const timerScore = Math.max(0, Math.min(100, Math.round(100 - (Math.abs(avgDrift) / 50) * 100)));
-  // Proc score: 100 = <1ms avg render, 0 = >20ms
+  // Proc score: 100 = <0.5ms avg, 0 = >20ms
   const procScore  = Math.max(0, Math.min(100, Math.round(100 - (avgProcMs / 20) * 100)));
-  const overallScore = Math.round((timerScore + procScore) / 2);
+  // Sched score: 100 = <1ms avg scheduler overhead, 0 = >20ms
+  const schedScore = Math.max(0, Math.min(100, Math.round(100 - (avgSchedMs / 20) * 100)));
+  const overallScore = Math.round((procScore + schedScore) / 2);
 
   const grade = overallScore >= 90 ? "A" : overallScore >= 75 ? "B" : overallScore >= 55 ? "C" : "D";
   const gradeClass = grade === "A" ? "a" : grade === "B" ? "b" : grade === "C" ? "c" : "d";
@@ -334,88 +332,91 @@ async function runDeviceBenchmark() {
     enabled: true, trials: BENCH_TRIALS,
     avgProcMs, minProcMs, maxProcMs, procSd,
     minPossibleDurMs,
-    avgDriftMs: avgDrift, minDriftMs: minDrift, maxDriftMs: maxDrift, driftSdMs: driftSd,
-    timerScore, procScore, overallScore, grade,
-    drifts: [...drifts], procTimes: [...procTimes]
+    avgSchedMs, minSchedMs, maxSchedMs, schedSd,
+    procScore, schedScore, overallScore, grade,
+    schedTimes: [...schedTimes], procTimes: [...procTimes]
   };
 
-  // ── Render results ──
   if (statusLine) statusLine.textContent = "Benchmark complete";
 
   if (gradeEl) {
     gradeEl.textContent = `Grade: ${grade}  (${overallScore}/100)`;
-    gradeEl.className = `bench-grade ${gradeClass}`;
+    gradeEl.className   = `bench-grade ${gradeClass}`;
     gradeEl.style.display = "block";
   }
 
   const canRun = minPossibleDurMs < 1000;
   const rows = [
     ["── PROCESSOR SPEED ──", ""],
-    ["Avg render time",   `${avgProcMs.toFixed(2)} ms`],
-    ["Min / Max render",  `${minProcMs.toFixed(2)} / ${maxProcMs.toFixed(2)} ms`],
-    ["Render SD",         `${procSd.toFixed(2)} ms`],
-    ["Min possible rate", `${minPossibleDurMs} ms/trial`],
-    ["Can run <1000ms?",  canRun ? `✓ Yes — down to ~${minPossibleDurMs}ms` : `✗ Marginal (${minPossibleDurMs}ms needed)`],
-    ["Processor score",   `${procScore} / 100`],
-    ["── TIMER ACCURACY ──", ""],
-    ["Avg drift",         `${avgDrift.toFixed(1)} ms`],
-    ["Min / Max drift",   `${minDrift.toFixed(1)} / ${maxDrift.toFixed(1)} ms`],
-    ["Drift SD",          `${driftSd.toFixed(1)} ms`],
-    ["Timer score",       `${timerScore} / 100`],
+    ["Avg render time",     `${avgProcMs.toFixed(2)} ms`],
+    ["Min / Max render",    `${minProcMs.toFixed(2)} / ${maxProcMs.toFixed(2)} ms`],
+    ["Render SD",           `${procSd.toFixed(2)} ms`],
+    ["Min presentation rate", `~${minPossibleDurMs} ms/trial`],
+    ["Can run <1000ms?",    canRun ? `✓ Yes — floor ~${minPossibleDurMs}ms` : `✗ Marginal (${minPossibleDurMs}ms floor)`],
+    ["Processor score",     `${procScore} / 100`],
+    ["── SCHEDULER SPEED ──", ""],
+    ["Avg setTimeout(0)",   `${avgSchedMs.toFixed(2)} ms`],
+    ["Min / Max",           `${minSchedMs.toFixed(2)} / ${maxSchedMs.toFixed(2)} ms`],
+    ["Scheduler SD",        `${schedSd.toFixed(2)} ms`],
+    ["Scheduler score",     `${schedScore} / 100`],
     ["── OVERALL ──", ""],
-    ["Score",             `${overallScore} / 100`],
-    ["Grade",             grade],
+    ["Score",               `${overallScore} / 100`],
+    ["Grade",               grade],
   ];
 
   if (statsBox) {
     statsBox.innerHTML = rows.map(([label, val]) =>
-      val === "" ? `<div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:8px;letter-spacing:.08em">${label}</div>`
-      : `<div class="bench-stat"><span class="bench-label">${label}</span><span class="bench-val">${val}</span></div>`
+      val === ""
+        ? `<div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:8px;letter-spacing:.08em">${label}</div>`
+        : `<div class="bench-stat"><span class="bench-label">${label}</span><span class="bench-val">${val}</span></div>`
     ).join("");
   }
 
-  // ── Chart: drift over trials ──
+  // Chart: scheduler call times per trial
   if (chartCanvas) {
     chartCanvas.style.display = "block";
     const ctx = chartCanvas.getContext("2d");
     const W = chartCanvas.width, H = chartCanvas.height;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "#081321"; ctx.fillRect(0, 0, W, H);
-    const PAD = {top:20, right:10, bottom:24, left:42};
+    const PAD = { top: 20, right: 10, bottom: 24, left: 46 };
     const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
-    const dMax = Math.max(Math.abs(minDrift), Math.abs(maxDrift), 5);
-    function yOf(v) { return PAD.top + cH/2 - (v / dMax) * (cH/2); }
-    // Zero line
-    ctx.strokeStyle = "rgba(79,111,153,.4)"; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(PAD.left, yOf(0)); ctx.lineTo(PAD.left+cW, yOf(0)); ctx.stroke();
-    // Y axis labels
-    ctx.fillStyle="#7fa0c0"; ctx.font="9px sans-serif"; ctx.textAlign="right";
-    ctx.fillText(`+${dMax.toFixed(0)}ms`, PAD.left-3, PAD.top+4);
-    ctx.fillText("0", PAD.left-3, yOf(0)+4);
-    ctx.fillText(`${(-dMax).toFixed(0)}ms`, PAD.left-3, PAD.top+cH);
-    // Drift line
-    ctx.strokeStyle="#7fd7ff"; ctx.lineWidth=1.5;
+    const vMax = Math.max(...schedTimes, 10);
+    function yOf(v) { return PAD.top + cH - (v / vMax) * cH; }
+    // Grid
+    ctx.strokeStyle = "rgba(79,111,153,.25)"; ctx.lineWidth = 1;
+    [0, .25, .5, .75, 1].forEach(f => {
+      const y = PAD.top + cH * (1 - f);
+      ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+      ctx.fillStyle = "#7fa0c0"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
+      ctx.fillText(`${(vMax * f).toFixed(1)}ms`, PAD.left - 3, y + 3);
+    });
+    // Line
+    ctx.strokeStyle = "#7fd7ff"; ctx.lineWidth = 1.5;
     ctx.beginPath();
-    drifts.forEach((d,i) => {
-      const x = PAD.left + (i/(BENCH_TRIALS-1))*cW;
-      const y = yOf(d);
-      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    schedTimes.forEach((v, i) => {
+      const x = PAD.left + (i / (BENCH_TRIALS - 1)) * cW;
+      i === 0 ? ctx.moveTo(x, yOf(v)) : ctx.lineTo(x, yOf(v));
     });
     ctx.stroke();
-    // Title
-    ctx.fillStyle="#d7e7f8"; ctx.font="bold 10px sans-serif"; ctx.textAlign="left";
-    ctx.fillText("Timer drift per trial (ms above/below 1000ms target)", PAD.left, 14);
-    ctx.textAlign="center";
-    ctx.fillStyle="#7fa0c0"; ctx.font="9px sans-serif";
-    ctx.fillText("Trial →", PAD.left + cW/2, H-2);
+    // Avg line
+    const yAvg = yOf(avgSchedMs);
+    ctx.strokeStyle = "rgba(255,159,64,.6)"; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(PAD.left, yAvg); ctx.lineTo(PAD.left + cW, yAvg); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ff9f40"; ctx.font = "9px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("avg", PAD.left + cW + 2, yAvg + 3);
+    // Labels
+    ctx.fillStyle = "#d7e7f8"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("Scheduler overhead per call — setTimeout(0) actual latency", PAD.left, 14);
+    ctx.fillStyle = "#7fa0c0"; ctx.font = "9px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Call →", PAD.left + cW / 2, H - 2);
   }
 
   if (btnsEl) btnsEl.style.display = "grid";
 
-  // Wait for user action (retest or return to admin)
-  await new Promise(resolve => {
-    state._benchResolve = resolve;
-  });
+  await new Promise(resolve => { state._benchResolve = resolve; });
 }
 
 // ═══════════════════════════════════════════════════
@@ -1285,8 +1286,8 @@ function renderHistoryGraphs() {
   const note = state.benchmark && state.benchmark.enabled
     ? `Benchmark grade ${state.benchmark.grade} (${state.benchmark.overallScore}/100) | ` +
       `proc ${state.benchmark.avgProcMs.toFixed(2)}ms avg | min rate ${state.benchmark.minPossibleDurMs}ms | ` +
-      `timer drift ${state.benchmark.avgDriftMs.toFixed(1)}ms avg`
-    : "Device benchmark off (enable: deviceBenchmarkEnabled = 1)";
+      `scheduler ${state.benchmark.avgSchedMs.toFixed(2)}ms avg`
+    : "Device benchmark — tap 'Run Benchmark' on main screen";
   const an = $("adminBenchmarkNote");
   if (an) an.textContent = note;
 }
