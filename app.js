@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V8 — dots/lines layout rebuild
+//  CogBlock V10 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -83,7 +83,7 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v8_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v10_settings") || "null");
   if (!s) return { ...DEFAULTS };
   // Only carry over keys that exist in DEFAULTS — prevents stale/missing keys crashing
   const merged = { ...DEFAULTS };
@@ -93,7 +93,7 @@ function loadSettings() {
   return merged;
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v8_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v10_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -110,7 +110,7 @@ const state = {
   recoveryCorrectCompleted: 0,  // used by terminal_recovery only
   spCorrectStreak: 0,           // consecutive corrects in SP restart phase
   spWrongCount: 0,              // total wrongs in SP restart phase
-  history: JSON.parse(localStorage.getItem("cogblock_v8_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v10_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap during paced phase (correct or wrong)
   totalCorrect: 0,       // correct across ALL phases
@@ -515,7 +515,7 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v8_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v10_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
@@ -545,7 +545,7 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V8  —  Test Results
+`CogBlock V10  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
@@ -1237,14 +1237,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v8_results.json";
+  a.download = "cogblock_v10_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V8 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V10 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1370,7 +1370,6 @@ $("subjectNextBtn").onclick = () => {
 };
 
 $("skipRefresherBtn").onclick    = () => { showOnly("fatigueOverlay"); setStatus("Refresher skipped"); };
-$("continueRefresherBtn").onclick= () => { showOnly("fatigueOverlay"); setStatus("Refresher done"); };
 $("refBackBtn").onclick          = () => goToStartPage();
 $("refStartOverBtn").onclick     = () => startOverFlow();
 $("fatigueBackBtn").onclick      = () => goToStartPage();
@@ -1397,7 +1396,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v8_admin.json"; a.click();
+  a.download = "cogblock_v10_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1415,7 +1414,7 @@ $("resultsEmailBtn").onclick = emailResults;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("'Add to Home Screen' saves CogBlock V8 as an app for offline use.");
+  setStatus("'Add to Home Screen' saves CogBlock V10 as an app for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
