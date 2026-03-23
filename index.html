@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b1830" />
   <link rel="manifest" href="manifest.json" />
-  <title>CogBlock V6</title>
+  <title>CogBlock V7</title>
   <style>
     :root{
       --bg:#091426; --bg2:#132746; --panel:#0d1b33; --panel2:#10213e;
@@ -206,7 +206,128 @@
 <!-- ═══════════ SUBJECT ID OVERLAY ═══════════ -->
 <div id="subjectOverlay" class="overlay">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:10px"><span class="badge">V6</span></div>
+
+    <!-- ── Logo graphic ── -->
+    <div style="text-align:center;margin-bottom:4px">
+      <svg viewBox="0 0 320 210" width="100%" style="max-width:320px;display:block;margin:0 auto" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="bgGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#1a2a3a"/>
+            <stop offset="100%" stop-color="#060c14"/>
+          </radialGradient>
+          <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <filter id="glowStrong" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="5" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <!-- carbon-fiber texture pattern -->
+          <pattern id="cf" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+            <rect width="8" height="8" fill="#111"/>
+            <rect x="0" y="0" width="4" height="4" fill="#161616"/>
+            <rect x="4" y="4" width="4" height="4" fill="#161616"/>
+            <rect x="1" y="1" width="2" height="2" fill="#1a1a1a"/>
+            <rect x="5" y="5" width="2" height="2" fill="#1a1a1a"/>
+          </pattern>
+        </defs>
+
+        <!-- background -->
+        <rect width="320" height="210" fill="url(#cf)"/>
+        <rect width="320" height="210" fill="url(#bgGrad)" opacity="0.55"/>
+
+        <!-- head silhouette -->
+        <path d="M128,195 C128,195 115,190 110,180 C105,170 108,158 108,145
+                 C108,132 100,125 98,115 C95,100 100,88 105,80
+                 C112,68 120,58 130,52 C142,44 158,40 170,42
+                 C185,44 198,52 207,64 C216,76 218,92 215,106
+                 C212,118 204,126 202,138 C200,150 204,162 200,172
+                 C196,182 186,190 178,194 C168,198 148,198 138,197 Z"
+              fill="none" stroke="#7fd7ff" stroke-width="1.8" opacity="0.7" filter="url(#glow)"/>
+
+        <!-- neck -->
+        <path d="M138,195 L135,210 M155,197 L155,210 M175,194 L178,210"
+              fill="none" stroke="#7fd7ff" stroke-width="1.5" opacity="0.5"/>
+
+        <!-- LARGE gear (main, center) -->
+        <g transform="translate(172,90)" filter="url(#glowStrong)">
+          <circle r="28" fill="none" stroke="#4aa8ff" stroke-width="2.5"/>
+          <circle r="20" fill="none" stroke="#4aa8ff" stroke-width="1.5"/>
+          <circle r="10" fill="none" stroke="#4aa8ff" stroke-width="2"/>
+          <circle r="5" fill="#4aa8ff" opacity="0.6"/>
+          <!-- gear teeth (12 teeth) -->
+          <g stroke="#4aa8ff" stroke-width="4" stroke-linecap="round">
+            <line x1="0" y1="-28" x2="0" y2="-33"/>
+            <line x1="14" y1="-24" x2="16.5" y2="-28.5"/>
+            <line x1="24" y1="-14" x2="28.5" y2="-16.5"/>
+            <line x1="28" y1="0" x2="33" y2="0"/>
+            <line x1="24" y1="14" x2="28.5" y2="16.5"/>
+            <line x1="14" y1="24" x2="16.5" y2="28.5"/>
+            <line x1="0" y1="28" x2="0" y2="33"/>
+            <line x1="-14" y1="24" x2="-16.5" y2="28.5"/>
+            <line x1="-24" y1="14" x2="-28.5" y2="16.5"/>
+            <line x1="-28" y1="0" x2="-33" y2="0"/>
+            <line x1="-24" y1="-14" x2="-28.5" y2="-16.5"/>
+            <line x1="-14" y1="-24" x2="-16.5" y2="-28.5"/>
+          </g>
+          <!-- concentric rings -->
+          <circle r="24" fill="none" stroke="#7fd7ff" stroke-width="0.6" opacity="0.5"/>
+          <circle r="16" fill="none" stroke="#7fd7ff" stroke-width="0.6" opacity="0.5"/>
+        </g>
+
+        <!-- SMALL gear (upper-left of large) -->
+        <g transform="translate(142,65)" filter="url(#glow)">
+          <circle r="14" fill="none" stroke="#4aa8ff" stroke-width="1.8"/>
+          <circle r="8" fill="none" stroke="#4aa8ff" stroke-width="1.2"/>
+          <circle r="3" fill="#4aa8ff" opacity="0.5"/>
+          <g stroke="#4aa8ff" stroke-width="3" stroke-linecap="round">
+            <line x1="0" y1="-14" x2="0" y2="-18"/>
+            <line x1="9.9" y1="-9.9" x2="12.7" y2="-12.7"/>
+            <line x1="14" y1="0" x2="18" y2="0"/>
+            <line x1="9.9" y1="9.9" x2="12.7" y2="12.7"/>
+            <line x1="0" y1="14" x2="0" y2="18"/>
+            <line x1="-9.9" y1="9.9" x2="-12.7" y2="12.7"/>
+            <line x1="-14" y1="0" x2="-18" y2="0"/>
+            <line x1="-9.9" y1="-9.9" x2="-12.7" y2="-12.7"/>
+          </g>
+        </g>
+
+        <!-- MEDIUM gear (lower) -->
+        <g transform="translate(158,128)" filter="url(#glow)">
+          <circle r="18" fill="none" stroke="#4aa8ff" stroke-width="2"/>
+          <circle r="11" fill="none" stroke="#4aa8ff" stroke-width="1.2"/>
+          <circle r="4" fill="#4aa8ff" opacity="0.5"/>
+          <g stroke="#4aa8ff" stroke-width="3.5" stroke-linecap="round">
+            <line x1="0" y1="-18" x2="0" y2="-22"/>
+            <line x1="12.7" y1="-12.7" x2="15.6" y2="-15.6"/>
+            <line x1="18" y1="0" x2="22" y2="0"/>
+            <line x1="12.7" y1="12.7" x2="15.6" y2="15.6"/>
+            <line x1="0" y1="18" x2="0" y2="22"/>
+            <line x1="-12.7" y1="12.7" x2="-15.6" y2="15.6"/>
+            <line x1="-18" y1="0" x2="-22" y2="0"/>
+            <line x1="-12.7" y1="-12.7" x2="-15.6" y2="-15.6"/>
+          </g>
+        </g>
+
+        <!-- small triangle detail on forehead -->
+        <polygon points="128,88 134,80 140,88" fill="none" stroke="#7fd7ff" stroke-width="1.2" opacity="0.6" filter="url(#glow)"/>
+      </svg>
+    </div>
+
+    <!-- ── Think Fast! tagline ── -->
+    <div style="text-align:center;margin-bottom:6px">
+      <span style="
+        font-size:22px;font-weight:900;letter-spacing:.12em;
+        background:linear-gradient(90deg,#7fd7ff,#ffffff,#7fd7ff);
+        -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+        background-clip:text;text-shadow:none;
+        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+        text-transform:uppercase;
+      ">Think Fast!</span>
+    </div>
+
+    <div style="text-align:center;margin-bottom:10px"><span class="badge">V7</span></div>
     <h2>CogBlock</h2>
     <p class="modal-hint">Enter your Subject ID to begin.</p>
     <div class="field-row">
@@ -223,7 +344,7 @@
 <!-- ═══════════ REFRESHER OVERLAY ═══════════ -->
 <div id="refresherOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V6</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V7</span></div>
     <h2>Pattern Refresher</h2>
     <p class="modal-hint">Dot quantity matches line quantity. Match dots→lines or lines→dots.</p>
     <div class="panel" style="margin-bottom:12px">
@@ -254,7 +375,7 @@
 <!-- ═══════════ RESULTS OVERLAY ═══════════ -->
 <div id="resultsOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V6</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V7</span></div>
     <h2>Test Results</h2>
     <div class="panel result" id="resultsPageBox"></div>
     <canvas id="resultsRTChart" class="chart" width="380" height="220" style="margin-top:10px"></canvas>
@@ -311,7 +432,7 @@
   <!-- topbar -->
   <div class="topbar">
     <div class="topbar-left" id="modeLabel">Subject mode</div>
-    <div style="text-align:center"><span class="badge">V6</span></div>
+    <div style="text-align:center"><span class="badge">V7</span></div>
     <div class="topbar-right" id="phaseLabel">Ready</div>
   </div>
 
@@ -355,7 +476,7 @@
     <button class="ctrl-btn" id="startOverBtn">Full Reset</button>
   </div>
 
-  <div class="statusline" id="statusLine">CogBlock V6 ready.</div>
+  <div class="statusline" id="statusLine">CogBlock V7 ready.</div>
   <div class="panel result hidden" id="resultBox"></div>
 
 </div>

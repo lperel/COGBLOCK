@@ -1,14 +1,14 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V6 — dots/lines layout rebuild
+//  CogBlock V7 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
   adminPasscode: "4822",
-  speedupFactor: 0.80,
   resumeSlowerByMs: 400,
   consecutiveMissesForBlock: 2,
   recoveryCorrectTrials: 2,
   qualifyingBlockGapMs: 250,
+  rollMeanWindow: 8,
   noResponseTimeoutMs: 20000,
   wrongWindowSize: 5,
   wrongThresholdStop: 4,
@@ -27,11 +27,11 @@ const DEFAULTS = {
 };
 
 const ADMIN_FIELDS = [
-  ["speedupFactor","Speedup factor","number"],
   ["resumeSlowerByMs","Resume slower after block (ms)","number"],
   ["consecutiveMissesForBlock","Consecutive misses for block","number"],
   ["recoveryCorrectTrials","Recovery correct trials (also final self-paced count)","number"],
   ["qualifyingBlockGapMs","Max block diff to trigger end (ms)","number"],
+  ["rollMeanWindow","Rolling mean window size (answers)","number"],
   ["maxTestDurationMs","Max total test time (ms)","number"],
   ["noResponseTimeoutMs","Time to end test if no response (ms)","number"],
   ["wrongWindowSize","Wrong-answer window size","number"],
@@ -81,11 +81,11 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v6_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v7_settings") || "null");
   return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v6_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v7_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -100,10 +100,13 @@ const state = {
   overloads: [],
   recoveries: [],
   recoveryCorrectCompleted: 0,
-  history: JSON.parse(localStorage.getItem("cogblock_v6_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v7_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap during paced phase (correct or wrong)
+  totalCorrect: 0,       // correct across ALL phases
+  totalIncorrect: 0,     // incorrect across ALL phases
   pacedErrors: 0,        // wrong taps during paced phase only
+  rollMeanLog: [],       // last N answers (true/false) across all phases for roll mean check
   testStartTime: null,   // performance.now() at test start
   trialTimer: null,
   absoluteNoResponseTimer: null,
@@ -385,9 +388,31 @@ function trialMatches(trial, index) {
 }
 
 function recordAnswer(ok) {
+  // ── per-window wrong-answer check (existing) ──
   state.lastFiveAnswers.push(ok);
   if (state.lastFiveAnswers.length > settings.wrongWindowSize) state.lastFiveAnswers.shift();
+
+  // ── all-phase totals ──
+  if (ok) state.totalCorrect += 1;
+  else    state.totalIncorrect += 1;
+
+  // ── rolling mean check (all phases) ──
+  state.rollMeanLog.push(ok);
+  const win = Math.max(1, Math.round(Number(settings.rollMeanWindow) || 8));
+  if (state.rollMeanLog.length > win) state.rollMeanLog.shift();
+  if (state.rollMeanLog.length === win) {
+    const correctCount = state.rollMeanLog.filter(v => v === true).length;
+    const ratio = correctCount / win;
+    if (ratio < 0.70) {
+      state.endReason = `Too many wrong responses (${correctCount}/${win} correct = ${(ratio * 100).toFixed(0)}% — below 70% threshold)`;
+      finish();
+      return true;
+    }
+  }
+
   updateMetrics();
+
+  // ── existing wrong-threshold stop ──
   const wc = state.lastFiveAnswers.filter(v => v === false).length;
   if (state.lastFiveAnswers.length === settings.wrongWindowSize && wc > settings.wrongThresholdStop) {
     state.endReason = `More than ${settings.wrongThresholdStop} wrong answers out of last ${settings.wrongWindowSize}. Restart required.`;
@@ -462,6 +487,8 @@ function finish() {
     blockScoreDifferenceMs:     blockDiff,
     cognitivePerformanceScore:  cps,
     totalResponses:             state.totalResponses,
+    totalCorrect:               state.totalCorrect,
+    totalIncorrect:             state.totalIncorrect,
     pacedErrors:                state.pacedErrors,
     pacedResponseCount:         state.pacedRTs.length,
     pacedResponseMeanMs:        state.pacedRTs.length ? mean(state.pacedRTs) : null,
@@ -474,7 +501,7 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v6_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v7_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
@@ -504,7 +531,7 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V6  —  Test Results
+`CogBlock V7  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
@@ -524,12 +551,14 @@ ${blockList}
   CPS:                 ${cps != null ? cps.toFixed(1) + " / 100" : "—"}
 ${hr}
 RESPONSE STATISTICS
-  Total responses:     ${result.totalResponses}
-  Correct (paced):     ${result.pacedResponseCount}
-  Errors (paced):      ${result.pacedErrors}
-  Mean paced RT:       ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
-  Paced RT SD:         ${sd != null ? sd.toFixed(1) + " ms" : "—"}
-  Test duration:       ${formatDuration(testDurMs)}
+  Total responses:       ${result.totalResponses}
+  Correct (all phases):  ${result.totalCorrect}
+  Incorrect (all phases):${result.totalIncorrect}
+  Correct (paced only):  ${result.pacedResponseCount}
+  Errors (paced only):   ${result.pacedErrors}
+  Mean paced RT:         ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
+  Paced RT SD:           ${sd != null ? sd.toFixed(1) + " ms" : "—"}
+  Test duration:         ${formatDuration(testDurMs)}
 ${hr}
 END REASON
   ${result.endReason}`;
@@ -1142,14 +1171,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v6_results.json";
+  a.download = "cogblock_v7_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V6 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V7 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1190,6 +1219,7 @@ function clearCurrentSession() {
   state.recoveryCorrectCompleted = 0;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
+  state.totalCorrect = 0; state.totalIncorrect = 0; state.rollMeanLog = [];
   state.lastFiveAnswers = [];
   state.calibrationTrialIndex = 0;
   state.calibrationRTs = []; state.calibrationErrors = 0;
@@ -1236,6 +1266,7 @@ async function startTest() {
   state.recoveryCorrectCompleted = 0;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
+  state.totalCorrect = 0; state.totalIncorrect = 0; state.rollMeanLog = [];
   state.lastFiveAnswers = [];
   state.calibrationTrialIndex = 0;
   state.calibrationRTs = []; state.calibrationErrors = 0;
@@ -1296,7 +1327,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v6_admin.json"; a.click();
+  a.download = "cogblock_v7_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1316,7 +1347,7 @@ $("resultsEmailBtn").onclick = emailResults;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("Install adds CogBlock V6 to your home screen for offline use.");
+  setStatus("Install adds CogBlock V7 to your home screen for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
