@@ -258,21 +258,21 @@ async function runDeviceBenchmark(force) {
 
   const BENCH_TRIALS = 1000;
 
-  const overlay     = $("benchmarkOverlay");
-  const statusLine  = $("benchStatusLine");
-  const statsBox    = $("benchStats");
-  const gradeEl     = $("benchGrade");
-  const chartCanvas = $("benchChart");
-  const btnsEl      = $("benchBtns");
+  const benchOverlay    = $("benchmarkOverlay");
+  const benchStatus     = $("benchStatusLine");
+  const benchStatsBox   = $("benchStats");
+  const benchGradeEl    = $("benchGrade");
+  const benchChartEl    = $("benchChart");
+  const benchBtnsEl     = $("benchBtns");
 
-  if (overlay)     overlay.classList.remove("hidden");
-  if (gradeEl)     gradeEl.style.display  = "none";
-  if (chartCanvas) chartCanvas.style.display = "none";
-  if (btnsEl)      btnsEl.style.display   = "none";
-  if (statsBox)    statsBox.innerHTML      = "";
+  if (benchOverlay)   benchOverlay.classList.remove("hidden");
+  if (benchGradeEl)   benchGradeEl.style.display   = "none";
+  if (benchChartEl)   benchChartEl.style.display    = "none";
+  if (benchBtnsEl)    benchBtnsEl.style.display     = "none";
+  if (benchStatsBox)  benchStatsBox.innerHTML        = "";
 
   // ── Phase 1: Processor speed — generate + render trials as fast as possible ──
-  if (statusLine) statusLine.textContent = "Phase 1: Measuring processor speed…";
+  if (benchStatus) benchStatus.textContent = "Phase 1: Measuring processor speed…";
   await new Promise(r => setTimeout(r, 50)); // allow UI to update
 
   const procTimes = [];
@@ -281,8 +281,8 @@ async function runDeviceBenchmark(force) {
     const trial = makeTrial("paced", i > 0 ? i % 6 : null);
     renderTrial(trial);
     procTimes.push(performance.now() - t0);
-    if (statusLine && i % 10 === 9)
-      statusLine.textContent = `Phase 1: ${i + 1}/${BENCH_TRIALS} trials…`;
+    if (benchStatus && i % 10 === 9)
+      benchStatus.textContent = `Phase 1: ${i + 1}/${BENCH_TRIALS} trials…`;
   }
   setProbeIdle();
 
@@ -293,7 +293,7 @@ async function runDeviceBenchmark(force) {
   const minPossibleDurMs = Math.ceil(avgProcMs + procSd * 2);
 
   // ── Phase 2: Scheduler overhead — how fast does setTimeout(0) actually fire? ──
-  if (statusLine) statusLine.textContent = "Phase 2: Measuring scheduler speed…";
+  if (benchStatus) benchStatus.textContent = "Phase 2: Measuring scheduler speed…";
   await new Promise(r => setTimeout(r, 50));
 
   const schedTimes = [];
@@ -305,8 +305,8 @@ async function runDeviceBenchmark(force) {
       setTimeout(() => {
         schedTimes.push(performance.now() - t0);
         n++;
-        if (statusLine && n % 10 === 0)
-          statusLine.textContent = `Phase 2: ${n}/${BENCH_TRIALS} scheduler calls…`;
+        if (benchStatus && n % 100 === 0)
+          benchStatus.textContent = `Phase 2: ${n}/${BENCH_TRIALS} scheduler calls…`;
         next();
       }, 0);
     }
@@ -319,71 +319,66 @@ async function runDeviceBenchmark(force) {
   const schedSd    = stdDev(schedTimes) || 0;
 
   // ── Scores ──
-  // Proc score: 100 = <0.5ms avg, 0 = >20ms
-  const procScore  = Math.max(0, Math.min(100, Math.round(100 - (avgProcMs / 20) * 100)));
-  // Sched score: 100 = <1ms avg scheduler overhead, 0 = >20ms
-  const schedScore = Math.max(0, Math.min(100, Math.round(100 - (avgSchedMs / 20) * 100)));
+  const procScore   = Math.max(0, Math.min(100, Math.round(100 - (avgProcMs  / 20) * 100)));
+  const schedScore  = Math.max(0, Math.min(100, Math.round(100 - (avgSchedMs / 20) * 100)));
   const overallScore = Math.round((procScore + schedScore) / 2);
 
-  const grade = overallScore >= 90 ? "A" : overallScore >= 75 ? "B" : overallScore >= 55 ? "C" : "D";
+  const grade      = overallScore >= 90 ? "A" : overallScore >= 75 ? "B" : overallScore >= 55 ? "C" : "D";
   const gradeClass = grade === "A" ? "a" : grade === "B" ? "b" : grade === "C" ? "c" : "d";
 
   state.benchmark = {
     enabled: true, trials: BENCH_TRIALS,
-    avgProcMs, minProcMs, maxProcMs, procSd,
-    minPossibleDurMs,
+    avgProcMs, minProcMs, maxProcMs, procSd, minPossibleDurMs,
     avgSchedMs, minSchedMs, maxSchedMs, schedSd,
     procScore, schedScore, overallScore, grade,
     schedTimes: [...schedTimes], procTimes: [...procTimes]
   };
 
-  if (statusLine) statusLine.textContent = "Benchmark complete";
+  if (benchStatus) benchStatus.textContent = "Benchmark complete";
 
-  if (gradeEl) {
-    gradeEl.textContent = `Grade: ${grade}  (${overallScore}/100)`;
-    gradeEl.className   = `bench-grade ${gradeClass}`;
-    gradeEl.style.display = "block";
+  if (benchGradeEl) {
+    benchGradeEl.textContent  = `Grade: ${grade}  (${overallScore}/100)`;
+    benchGradeEl.className    = `bench-grade ${gradeClass}`;
+    benchGradeEl.style.display = "block";
   }
 
   const canRun = minPossibleDurMs < 1000;
   const rows = [
     ["── PROCESSOR SPEED ──", ""],
-    ["Avg render time",     `${avgProcMs.toFixed(2)} ms`],
-    ["Min / Max render",    `${minProcMs.toFixed(2)} / ${maxProcMs.toFixed(2)} ms`],
-    ["Render SD",           `${procSd.toFixed(2)} ms`],
+    ["Avg render time",       `${avgProcMs.toFixed(2)} ms`],
+    ["Min / Max render",      `${minProcMs.toFixed(2)} / ${maxProcMs.toFixed(2)} ms`],
+    ["Render SD",             `${procSd.toFixed(2)} ms`],
     ["Min presentation rate", `~${minPossibleDurMs} ms/trial`],
-    ["Can run <1000ms?",    canRun ? `✓ Yes — floor ~${minPossibleDurMs}ms` : `✗ Marginal (${minPossibleDurMs}ms floor)`],
-    ["Processor score",     `${procScore} / 100`],
+    ["Can run <1000ms?",      canRun ? `✓ Yes — floor ~${minPossibleDurMs}ms` : `✗ Marginal (${minPossibleDurMs}ms floor)`],
+    ["Processor score",       `${procScore} / 100`],
     ["── SCHEDULER SPEED ──", ""],
-    ["Avg setTimeout(0)",   `${avgSchedMs.toFixed(2)} ms`],
-    ["Min / Max",           `${minSchedMs.toFixed(2)} / ${maxSchedMs.toFixed(2)} ms`],
-    ["Scheduler SD",        `${schedSd.toFixed(2)} ms`],
-    ["Scheduler score",     `${schedScore} / 100`],
+    ["Avg setTimeout(0)",     `${avgSchedMs.toFixed(2)} ms`],
+    ["Min / Max",             `${minSchedMs.toFixed(2)} / ${maxSchedMs.toFixed(2)} ms`],
+    ["Scheduler SD",          `${schedSd.toFixed(2)} ms`],
+    ["Scheduler score",       `${schedScore} / 100`],
     ["── OVERALL ──", ""],
-    ["Score",               `${overallScore} / 100`],
-    ["Grade",               grade],
+    ["Score",                 `${overallScore} / 100`],
+    ["Grade",                 grade],
   ];
 
-  if (statsBox) {
-    statsBox.innerHTML = rows.map(([label, val]) =>
+  if (benchStatsBox) {
+    benchStatsBox.innerHTML = rows.map(([label, val]) =>
       val === ""
         ? `<div style="font-size:11px;color:var(--accent);font-weight:700;margin-top:8px;letter-spacing:.08em">${label}</div>`
         : `<div class="bench-stat"><span class="bench-label">${label}</span><span class="bench-val">${val}</span></div>`
     ).join("");
   }
 
-  // Chart: scheduler call times per trial
-  if (chartCanvas) {
-    chartCanvas.style.display = "block";
-    const ctx = chartCanvas.getContext("2d");
-    const W = chartCanvas.width, H = chartCanvas.height;
+  if (benchChartEl) {
+    benchChartEl.style.display = "block";
+    const ctx = benchChartEl.getContext("2d");
+    const W = benchChartEl.width, H = benchChartEl.height;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "#081321"; ctx.fillRect(0, 0, W, H);
-    const PAD = { top: 20, right: 10, bottom: 24, left: 46 };
+    const PAD = { top: 20, right: 14, bottom: 24, left: 46 };
     const cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
     const vMax = Math.max(...schedTimes, 10);
-    function yOf(v) { return PAD.top + cH - (v / vMax) * cH; }
-    // Grid
+    const yOf  = v => PAD.top + cH - (v / vMax) * cH;
     ctx.strokeStyle = "rgba(79,111,153,.25)"; ctx.lineWidth = 1;
     [0, .25, .5, .75, 1].forEach(f => {
       const y = PAD.top + cH * (1 - f);
@@ -391,30 +386,27 @@ async function runDeviceBenchmark(force) {
       ctx.fillStyle = "#7fa0c0"; ctx.font = "9px sans-serif"; ctx.textAlign = "right";
       ctx.fillText(`${(vMax * f).toFixed(1)}ms`, PAD.left - 3, y + 3);
     });
-    // Line
-    ctx.strokeStyle = "#7fd7ff"; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "#7fd7ff"; ctx.lineWidth = 1;
     ctx.beginPath();
     schedTimes.forEach((v, i) => {
       const x = PAD.left + (i / (BENCH_TRIALS - 1)) * cW;
       i === 0 ? ctx.moveTo(x, yOf(v)) : ctx.lineTo(x, yOf(v));
     });
     ctx.stroke();
-    // Avg line
     const yAvg = yOf(avgSchedMs);
-    ctx.strokeStyle = "rgba(255,159,64,.6)"; ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(255,159,64,.7)"; ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 3]);
     ctx.beginPath(); ctx.moveTo(PAD.left, yAvg); ctx.lineTo(PAD.left + cW, yAvg); ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = "#ff9f40"; ctx.font = "9px sans-serif"; ctx.textAlign = "left";
     ctx.fillText("avg", PAD.left + cW + 2, yAvg + 3);
-    // Labels
     ctx.fillStyle = "#d7e7f8"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left";
-    ctx.fillText("Scheduler overhead per call — setTimeout(0) actual latency", PAD.left, 14);
+    ctx.fillText("Scheduler latency — setTimeout(0) per call", PAD.left, 14);
     ctx.fillStyle = "#7fa0c0"; ctx.font = "9px sans-serif"; ctx.textAlign = "center";
     ctx.fillText("Call →", PAD.left + cW / 2, H - 2);
   }
 
-  if (btnsEl) btnsEl.style.display = "grid";
+  if (benchBtnsEl) benchBtnsEl.style.display = "grid";
 }
 
 // ═══════════════════════════════════════════════════
