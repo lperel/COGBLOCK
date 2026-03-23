@@ -1774,8 +1774,6 @@ $("adminStartOverBtn2").onclick= () => startOverFlow();
 $("startBtn").onclick       = startTest;
 $("backToStartBtn").onclick = goToStartPage;
 $("startOverBtn").onclick   = startOverFlow;
-const mainBenchBtn = $("mainBenchmarkBtn");
-if (mainBenchBtn) mainBenchBtn.onclick = async () => { await runDeviceBenchmark(true); };
 $("resultsBackBtn").onclick  = goToStartPage;
 $("resultsStartOverBtn").onclick = startOverFlow;
 $("resultsExportBtn").onclick= exportResults;
