@@ -111,6 +111,7 @@ const state = {
   recoveryCorrectCompleted: 0,  // used by terminal_recovery only
   spCorrectStreak: 0,           // consecutive corrects in SP restart phase
   spWrongCount: 0,              // total wrongs in SP restart phase
+  terminalBlockReason: null,    // description of convergent blocks that triggered terminal rule
   history: JSON.parse(localStorage.getItem("cogblock_v11_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap (calibration + paced + recovery)
@@ -470,9 +471,11 @@ function avgLast2Blocks() {
 function maybeTriggerTerminalRule() {
   if (state.overloads.length < 2) return false;
   const n = state.overloads.length;
-  const diff = Math.abs(state.overloads[n - 1] - state.overloads[n - 2]);
+  const b1 = state.overloads[n - 2];
+  const b2 = state.overloads[n - 1];
+  const diff = Math.abs(b2 - b1);
   if (diff < settings.qualifyingBlockGapMs) {
-    // 2 consecutive block scores within qualifyingBlockGapMs of each other — trigger final self-paced
+    state.terminalBlockReason = `2 consecutive blocks within ${settings.qualifyingBlockGapMs} ms threshold (Block ${n-1}: ${b1.toFixed(0)} ms, Block ${n}: ${b2.toFixed(0)} ms, diff: ${diff.toFixed(0)} ms)`;
     state.phase = "terminal_recovery";
     state.recoveryCorrectCompleted = 0;
     state.spCorrectStreak = 0;
@@ -792,7 +795,7 @@ function handleTap(index, btnEl) {
       state.recoveryCorrectCompleted += 1;
       const needed = Math.max(1, Math.round(Number(settings.spRestartCorrectStreak) || 2));
       if (state.recoveryCorrectCompleted >= needed) {
-        state.endReason = `Completed ${needed} final self-paced trials`;
+        state.endReason = `Convergent blocks — ${state.terminalBlockReason || "2 consecutive blocks within threshold"}. Completed ${needed} final self-paced trials.`;
         finish();
         return;
       }
@@ -1276,7 +1279,7 @@ function emailResults() {
 // ═══════════════════════════════════════════════════
 
 function showOnly(overlayId) {
-  ["subjectOverlay", "refresherOverlay", "fatigueOverlay", "resultsOverlay", "adminOverlay"].forEach(id => {
+  ["subjectOverlay","refresherOverlay","fatigueOverlay","resultsOverlay","adminOverlay","summaryOverlay"].forEach(id => {
     const el = $(id);
     if (!el) return;
     if (id === overlayId) el.classList.remove("hidden");
@@ -1284,20 +1287,79 @@ function showOnly(overlayId) {
   });
 }
 
+function isTestSuccess(endReason) {
+  // Success = test ended because convergent blocks were found
+  return (endReason || "").toLowerCase().startsWith("convergent blocks");
+}
+
+function buildSummary(result) {
+  const rows = [
+    ["Subject ID",       result.subjectId],
+    ["Date / Time",      new Date(result.time).toLocaleString()],
+    ["Location",         (() => {
+      if (!result.geo) return "unavailable";
+      if (result.geo.status === "ok") {
+        const addr = result.geo.address || `${result.geo.latitude.toFixed(4)}, ${result.geo.longitude.toFixed(4)}`;
+        return addr.length > 40 ? addr.substring(0, 38) + "…" : addr;
+      }
+      return result.geo.status;
+    })()],
+    ["Version",          "CogBlock V11"],
+    ["Test Duration",    formatDuration(result.testDurationMs)],
+    ["Total Responses",  String(result.totalResponses)],
+    ["S-PF Rating",      result.samnPerelli ? `${result.samnPerelli.score} — ${result.samnPerelli.label}` : "—"],
+    ["CPS",              result.cognitivePerformanceScore != null ? result.cognitivePerformanceScore.toFixed(1) + " / 100" : "—"],
+    ["Total Blocks",     String(result.blockCount || result.blocks.length)],
+    ["Final Block Score",result.blocks.length ? result.blocks[result.blocks.length - 1].toFixed(0) + " ms" : "—"],
+    ["Block Score Diff", result.blockScoreDifferenceMs != null
+      ? `${result.blockScoreDifferenceMs > 0 ? "+" : ""}${result.blockScoreDifferenceMs.toFixed(0)} ms`
+      : "—"],
+  ];
+  const container = $("summaryRows");
+  if (!container) return;
+  container.innerHTML = rows.map(([label, val]) =>
+    `<div class="summary-row"><span class="summary-label">${label}</span><span class="summary-val">${val}</span></div>`
+  ).join("");
+}
+
 function showResultsPage(text) {
-  const box = $("resultsPageBox");
-  if (box) box.textContent = text;
-  showOnly("resultsOverlay");
-  renderHistoryGraphs();
-  // Draw RT scatter for the just-completed session
   const last = state.history[state.history.length - 1];
-  if (last) {
-    const meanRT = last.pacedResponseMeanMs;
-    const sdRT   = last.pacedResponseSdMs;
-    drawRTScatterChart($("resultsRTChart"), last.rtLog || [], last.blocks || [], meanRT, sdRT);
-  }
-  // Show Save Data button now that there are results — handled in results overlay
-  setTestingQuiet(false);
+  const success = last ? isTestSuccess(last.endReason) : false;
+
+  // Step 1 — Thinking (6s)
+  const thinking = $("thinkingOverlay");
+  const outcome  = $("outcomeOverlay");
+  const outcomeText = $("outcomeText");
+  const summary  = $("summaryOverlay");
+
+  if (thinking) thinking.classList.remove("hidden");
+
+  setTimeout(() => {
+    if (thinking) thinking.classList.add("hidden");
+
+    // Step 2 — Success / Failed (3s)
+    if (outcome && outcomeText) {
+      outcomeText.textContent = success ? "SUCCESS!" : "Test Failed";
+      outcomeText.className   = "outcome-text " + (success ? "success" : "failed");
+      outcome.classList.remove("hidden");
+    }
+
+    setTimeout(() => {
+      if (outcome) outcome.classList.add("hidden");
+
+      // Step 3 — Summary page
+      if (last) buildSummary(last);
+      if (summary) summary.classList.remove("hidden");
+      // Pre-populate full results page in background
+      const box = $("resultsPageBox");
+      if (box) box.textContent = text;
+      renderHistoryGraphs();
+      if (last) {
+        drawRTScatterChart($("resultsRTChart"), last.rtLog || [], last.blocks || [], last.pacedResponseMeanMs, last.pacedResponseSdMs);
+      }
+      setTestingQuiet(false);
+    }, 3000);
+  }, 6000);
 }
 
 function clearCurrentSession() {
@@ -1308,7 +1370,7 @@ function clearCurrentSession() {
   state.unresolvedStreak = 0;
   state.overloads = []; state.recoveries = [];
   state.recoveryCorrectCompleted = 0;
-  state.spCorrectStreak = 0; state.spWrongCount = 0;
+  state.spCorrectStreak = 0; state.spWrongCount = 0; state.terminalBlockReason = null;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
   state.totalCorrect = 0; state.totalIncorrect = 0; state.missedTrials = 0; state.rollMeanLog = [];
@@ -1328,6 +1390,9 @@ function clearCurrentSession() {
 
 function goToStartPage() {
   clearCurrentSession();
+  ["thinkingOverlay","outcomeOverlay"].forEach(id => {
+    const el = $(id); if (el) el.classList.add("hidden");
+  });
   setStatus("Ready");
   showOnly("subjectOverlay");
 }
@@ -1356,7 +1421,7 @@ async function startTest() {
   state.unresolvedStreak = 0;
   state.overloads = []; state.recoveries = [];
   state.recoveryCorrectCompleted = 0;
-  state.spCorrectStreak = 0; state.spWrongCount = 0;
+  state.spCorrectStreak = 0; state.spWrongCount = 0; state.terminalBlockReason = null;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
   state.totalCorrect = 0; state.totalIncorrect = 0; state.missedTrials = 0; state.rollMeanLog = [];
@@ -1433,6 +1498,22 @@ $("resultsBackBtn").onclick  = goToStartPage;
 $("resultsStartOverBtn").onclick = startOverFlow;
 $("resultsExportBtn").onclick= exportResults;
 $("resultsEmailBtn").onclick = emailResults;
+
+// Summary ↔ Full results navigation
+const summaryToFull = $("summaryToFullBtn");
+const fullToSummary = $("fullToSummaryBtn");
+if (summaryToFull) summaryToFull.onclick = () => {
+  $("summaryOverlay").classList.add("hidden");
+  $("resultsOverlay").classList.remove("hidden");
+};
+if (fullToSummary) fullToSummary.onclick = () => {
+  $("resultsOverlay").classList.add("hidden");
+  $("summaryOverlay").classList.remove("hidden");
+};
+const summaryRestart = $("summaryRestartBtn");
+const summaryReset   = $("summaryResetBtn");
+if (summaryRestart) summaryRestart.onclick = goToStartPage;
+if (summaryReset)   summaryReset.onclick   = startOverFlow;
 
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
