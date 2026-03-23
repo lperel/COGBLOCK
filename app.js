@@ -4,9 +4,10 @@
 
 const DEFAULTS = {
   adminPasscode: "4822",
-  resumeSlowerByMs: 400,
   consecutiveMissesForBlock: 2,
-  recoveryCorrectTrials: 2,
+  spRestartSlowerByMs: 375,
+  spRestartWrongLimit: 3,
+  spRestartCorrectStreak: 2,
   qualifyingBlockGapMs: 250,
   rollMeanWindow: 8,
   noResponseTimeoutMs: 20000,
@@ -27,9 +28,10 @@ const DEFAULTS = {
 };
 
 const ADMIN_FIELDS = [
-  ["resumeSlowerByMs","Resume slower after block (ms)","number"],
   ["consecutiveMissesForBlock","Consecutive misses for block","number"],
-  ["recoveryCorrectTrials","Recovery correct trials (also final self-paced count)","number"],
+  ["spRestartSlowerByMs","SP Restart: slowdown on success (ms)","number"],
+  ["spRestartWrongLimit","SP Restart: wrong limit before bad end","number"],
+  ["spRestartCorrectStreak","SP Restart: correct streak to pass","number"],
   ["qualifyingBlockGapMs","Max block diff to trigger end (ms)","number"],
   ["rollMeanWindow","Rolling mean window size (answers)","number"],
   ["maxTestDurationMs","Max total test time (ms)","number"],
@@ -99,7 +101,9 @@ const state = {
   unresolvedStreak: 0,
   overloads: [],
   recoveries: [],
-  recoveryCorrectCompleted: 0,
+  recoveryCorrectCompleted: 0,  // used by terminal_recovery only
+  spCorrectStreak: 0,           // consecutive corrects in SP restart phase
+  spWrongCount: 0,              // total wrongs in SP restart phase
   history: JSON.parse(localStorage.getItem("cogblock_v8_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap during paced phase (correct or wrong)
@@ -387,16 +391,18 @@ function trialMatches(trial, index) {
   return trial && index === trial.correctPos;
 }
 
-function recordAnswer(ok) {
-  // ── per-window wrong-answer check (existing) ──
+function recordAnswer(ok, isMiss) {
+  // ── per-window wrong-answer check ──
   state.lastFiveAnswers.push(ok);
   if (state.lastFiveAnswers.length > settings.wrongWindowSize) state.lastFiveAnswers.shift();
 
-  // ── all-phase totals ──
-  if (ok) state.totalCorrect += 1;
-  else    state.totalIncorrect += 1;
+  // ── all-phase totals — misses are not tapped responses ──
+  if (!isMiss) {
+    // already counted in handleTap for calibration/recovery/paced taps
+    // (paced correct/wrong counted there; here we only need the roll mean + stop checks)
+  }
 
-  // ── rolling mean check (all phases) ──
+  // ── rolling mean check (all phases, including misses) ──
   state.rollMeanLog.push(ok);
   const win = Math.max(1, Math.round(Number(settings.rollMeanWindow) || 8));
   if (state.rollMeanLog.length > win) state.rollMeanLog.shift();
@@ -435,6 +441,8 @@ function maybeTriggerTerminalRule() {
     // 2 consecutive block scores within qualifyingBlockGapMs of each other — trigger final self-paced
     state.phase = "terminal_recovery";
     state.recoveryCorrectCompleted = 0;
+    state.spCorrectStreak = 0;
+    state.spWrongCount = 0;
     openTrial("terminal_recovery");
     return true;
   }
@@ -451,7 +459,6 @@ function finishCalibration() {
   const pacedStart = clamp(avg * settings.initialPacedPercent, settings.minDurationMs, settings.maxDurationMs);
   state.duration = pacedStart;
   state.phase = "paced";
-  state.testStartTime = performance.now();
   armMaxTestTimer();
   setStatus(`Machine-paced start: ${pacedStart.toFixed(1)} ms`);
   openTrial("paced");
@@ -487,6 +494,7 @@ function finish() {
     blockScoreDifferenceMs:     blockDiff,
     cognitivePerformanceScore:  cps,
     totalResponses:             state.totalResponses,
+    totalTrials:                state.totalTrials,
     totalCorrect:               state.totalCorrect,
     totalIncorrect:             state.totalIncorrect,
     pacedErrors:                state.pacedErrors,
@@ -551,14 +559,15 @@ ${blockList}
   CPS:                 ${cps != null ? cps.toFixed(1) + " / 100" : "—"}
 ${hr}
 RESPONSE STATISTICS
-  Total responses:       ${result.totalResponses}
-  Correct (all phases):  ${result.totalCorrect}
-  Incorrect (all phases):${result.totalIncorrect}
-  Correct (paced only):  ${result.pacedResponseCount}
-  Errors (paced only):   ${result.pacedErrors}
-  Mean paced RT:         ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
-  Paced RT SD:           ${sd != null ? sd.toFixed(1) + " ms" : "—"}
-  Test duration:         ${formatDuration(testDurMs)}
+  Total taps (all phases):   ${result.totalResponses}
+  Correct taps:              ${result.totalCorrect}
+  Incorrect taps:            ${result.totalIncorrect - result.pacedErrors}  (calibration + recovery)
+  Missed (no response):      ${result.totalTrials - result.pacedResponseCount - result.pacedErrors}
+  Paced correct taps:        ${result.pacedResponseCount}
+  Paced wrong taps:          ${result.pacedErrors}
+  Mean paced RT:             ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
+  Paced RT SD:               ${sd != null ? sd.toFixed(1) + " ms" : "—"}
+  Test duration:             ${formatDuration(testDurMs)}
 ${hr}
 END REASON
   ${result.endReason}`;
@@ -585,10 +594,10 @@ function openTrial(kind) {
     setStatus("Machine-paced");
     state.trialTimer = setTimeout(onPacedFrameEnd, state.duration);
   } else if (kind === "recovery") {
-    phaseLabel.textContent = `Recovery ${state.recoveryCorrectCompleted + 1}/${settings.recoveryCorrectTrials}`;
-    setStatus("Self-paced recovery");
+    phaseLabel.textContent = `SP Restart ${state.spCorrectStreak}✓ ${state.spWrongCount}✗`;
+    setStatus(`SP Restart — need ${settings.spRestartCorrectStreak} in a row (${state.spWrongCount}/${settings.spRestartWrongLimit} wrong)`);
   } else if (kind === "terminal_recovery") {
-    phaseLabel.textContent = `Final ${state.recoveryCorrectCompleted + 1}/${settings.recoveryCorrectTrials}`;
+    phaseLabel.textContent = `Final SP ${state.recoveryCorrectCompleted + 1}/${settings.spRestartCorrectStreak}`;
     setStatus("Final self-paced recovery");
   }
 }
@@ -617,10 +626,10 @@ function onPacedFrameEnd() {
 
   if (currentMissed) {
     state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "missed" });
-    // No change to baseline on no-response
+    state.totalIncorrect += 1;  // missed = wrong outcome but NOT a tap response
     state.previousMissed = true;
     state.lastFrameDuration = state.duration;
-    if (recordAnswer(false)) return;
+    if (recordAnswer(false, true)) return;  // isMiss=true
   } else {
     state.previousMissed = false;
     state.lastFrameDuration = null;
@@ -637,6 +646,8 @@ function onPacedFrameEnd() {
     if (maybeTriggerTerminalRule()) return;
     state.phase = "recovery";
     state.recoveryCorrectCompleted = 0;
+    state.spCorrectStreak = 0;
+    state.spWrongCount = 0;
     openTrial("recovery");
     return;
   }
@@ -656,6 +667,10 @@ function handleTap(index, btnEl) {
     const rt = performance.now() - state.trialOpenedAt;
     const ok = trialMatches(state.current, index);
     flashBtn(index, ok);
+    // count every calibration tap toward all-phase totals
+    state.totalResponses += 1;
+    if (ok) state.totalCorrect += 1;
+    else    state.totalIncorrect += 1;
     if (!ok) {
       state.calibrationErrors += 1;
       updateMetrics();
@@ -679,29 +694,74 @@ function handleTap(index, btnEl) {
     return;
   }
 
-  if (state.phase === "recovery" || state.phase === "terminal_recovery") {
+  if (state.phase === "recovery") {
+    // ── SP Restart Phase after a block ──
     clearTimer();
     const ok = trialMatches(state.current, index);
     flashBtn(index, ok);
+    state.totalResponses += 1;
+    if (ok) state.totalCorrect += 1; else state.totalIncorrect += 1;
+
+    if (ok) {
+      state.spCorrectStreak += 1;
+      state.current.resolved = true;
+      const streakNeeded = Math.max(1, Math.round(Number(settings.spRestartCorrectStreak) || 2));
+      if (state.spCorrectStreak >= streakNeeded) {
+        // 2 correct in a row — success, re-enter MP with slowdown
+        const slower = clamp(
+          state.blockDuration + (Number(settings.spRestartSlowerByMs) || 375),
+          settings.minDurationMs, settings.maxDurationMs
+        );
+        state.recoveries.push(slower);
+        state.phase = "paced";
+        state.duration = slower;
+        state.spCorrectStreak = 0; state.spWrongCount = 0;
+        phaseLabel.textContent = `Paced · ${Math.round(slower)} ms`;
+        setStatus(`SP Restart passed — resuming at ${slower.toFixed(0)} ms`);
+        setTimeout(() => openTrial("paced"), 180);
+      } else {
+        setStatus(`SP Restart: ${state.spCorrectStreak} correct in a row — need ${streakNeeded}`);
+        setTimeout(() => openTrial("recovery"), 160);
+      }
+    } else {
+      state.spCorrectStreak = 0; // reset streak on any wrong
+      state.spWrongCount += 1;
+      const wrongLimit = Math.max(1, Math.round(Number(settings.spRestartWrongLimit) || 3));
+      if (state.spWrongCount >= wrongLimit) {
+        // 3 wrong — bad end
+        state.endReason = `SP Restart failed: ${wrongLimit} wrong responses before ${settings.spRestartCorrectStreak} correct in a row`;
+        finish();
+        return;
+      }
+      setStatus(`SP Restart: ${state.spWrongCount} wrong (limit ${wrongLimit})`);
+      setTimeout(() => openTrial("recovery"), 160);
+    }
+
+    // roll mean / wrong-threshold checks (don't end via recordAnswer — we handle it above)
+    recordAnswer(ok);
+    return;
+  }
+
+  if (state.phase === "terminal_recovery") {
+    // ── Terminal recovery: 2 self-paced correct then end ──
+    clearTimer();
+    const ok = trialMatches(state.current, index);
+    flashBtn(index, ok);
+    state.totalResponses += 1;
+    if (ok) state.totalCorrect += 1; else state.totalIncorrect += 1;
     if (recordAnswer(ok)) return;
     if (ok) {
       state.current.resolved = true;
       state.recoveryCorrectCompleted += 1;
-      if (state.recoveryCorrectCompleted >= settings.recoveryCorrectTrials) {
-        if (state.phase === "terminal_recovery") {
-          state.endReason = `Completed ${settings.recoveryCorrectTrials} final self-paced trials`;
-          finish();
-          return;
-        }
-        state.recoveries.push(state.blockDuration + settings.resumeSlowerByMs);
-        state.phase = "paced";
-        state.duration = clamp(state.blockDuration + settings.resumeSlowerByMs, settings.minDurationMs, settings.maxDurationMs);
-        setTimeout(() => openTrial("paced"), 180);
-      } else {
-        setTimeout(() => openTrial(state.phase), 160);
+      const needed = Math.max(1, Math.round(Number(settings.spRestartCorrectStreak) || 2));
+      if (state.recoveryCorrectCompleted >= needed) {
+        state.endReason = `Completed ${needed} final self-paced trials`;
+        finish();
+        return;
       }
+      setTimeout(() => openTrial("terminal_recovery"), 160);
     } else {
-      setTimeout(() => openTrial(state.phase), 160);
+      setTimeout(() => openTrial("terminal_recovery"), 160);
     }
     return;
   }
@@ -1206,6 +1266,7 @@ function showResultsPage(text) {
     const sdRT   = last.pacedResponseSdMs;
     drawRTScatterChart($("resultsRTChart"), last.rtLog || [], last.blocks || [], meanRT, sdRT);
   }
+  // Show Save Data button now that there are results — handled in results overlay
   setTestingQuiet(false);
 }
 
@@ -1217,6 +1278,7 @@ function clearCurrentSession() {
   state.unresolvedStreak = 0;
   state.overloads = []; state.recoveries = [];
   state.recoveryCorrectCompleted = 0;
+  state.spCorrectStreak = 0; state.spWrongCount = 0;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
   state.totalCorrect = 0; state.totalIncorrect = 0; state.rollMeanLog = [];
@@ -1264,6 +1326,7 @@ async function startTest() {
   state.unresolvedStreak = 0;
   state.overloads = []; state.recoveries = [];
   state.recoveryCorrectCompleted = 0;
+  state.spCorrectStreak = 0; state.spWrongCount = 0;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
   state.totalCorrect = 0; state.totalIncorrect = 0; state.rollMeanLog = [];
@@ -1275,6 +1338,7 @@ async function startTest() {
   state.previousMissed = false;
   state.lastFrameDuration = null;
   setTestingQuiet(true);
+  state.testStartTime = performance.now();  // start timer here — includes calibration
   await captureGeoAndAddress();
   await runDeviceBenchmark();
   noteAnyResponse();
@@ -1335,8 +1399,6 @@ $("adminStartOverBtn").onclick= () => startOverFlow();
 $("adminStartOverBtn2").onclick= () => startOverFlow();
 
 $("startBtn").onclick       = startTest;
-$("exportBtn").onclick      = exportResults;
-$("emailBtn").onclick       = emailResults;
 $("backToStartBtn").onclick = goToStartPage;
 $("startOverBtn").onclick   = startOverFlow;
 $("resultsBackBtn").onclick  = goToStartPage;
@@ -1347,17 +1409,17 @@ $("resultsEmailBtn").onclick = emailResults;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("Install adds CogBlock V8 to your home screen for offline use.");
+  setStatus("'Add to Home Screen' saves CogBlock V8 as an app for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
-    setStatus("Install: adds this app to your home screen for offline use. Not available in this browser — try Chrome or Edge on Android.");
+    setStatus("'Add to Home Screen' saves this app for offline use. Available in Chrome or Edge on Android, and Safari on iOS.");
     return;
   }
   deferredPrompt.prompt();
   const choice = await deferredPrompt.userChoice;
   deferredPrompt = null;
-  setStatus(choice.outcome === "accepted" ? "App installed to home screen." : "Install cancelled.");
+  setStatus(choice.outcome === "accepted" ? "App added to home screen." : "Cancelled.");
 };
 
 // ─── Init ───

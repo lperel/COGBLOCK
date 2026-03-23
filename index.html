@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b1830" />
   <link rel="manifest" href="manifest.json" />
-  <title>CogBlock V7</title>
+  <title>CogBlock V8</title>
   <style>
     :root{
       --bg:#091426; --bg2:#132746; --panel:#0d1b33; --panel2:#10213e;
@@ -226,7 +226,7 @@
       ">Think Fast!</span>
     </div>
 
-    <div style="text-align:center;margin-bottom:10px"><span class="badge">V7</span></div>
+    <div style="text-align:center;margin-bottom:10px"><span class="badge">V8</span></div>
     <h2>CogBlock</h2>
     <p class="modal-hint">Enter your Subject ID to begin.</p>
     <div class="field-row">
@@ -243,7 +243,7 @@
 <!-- ═══════════ REFRESHER OVERLAY ═══════════ -->
 <div id="refresherOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V7</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V8</span></div>
     <h2>Pattern Refresher</h2>
     <p class="modal-hint">Dot quantity matches line quantity. Match dots→lines or lines→dots.</p>
     <div class="panel" style="margin-bottom:12px">
@@ -251,7 +251,7 @@
     </div>
     <div class="controls four">
       <button class="ctrl-btn" id="skipRefresherBtn">Skip</button>
-      <button class="ctrl-btn" id="continueRefresherBtn">Continue</button>
+      <div></div>
       <button class="ctrl-btn" id="refBackBtn">Restart</button>
       <button class="ctrl-btn" id="refStartOverBtn">Reset</button>
     </div>
@@ -274,7 +274,7 @@
 <!-- ═══════════ RESULTS OVERLAY ═══════════ -->
 <div id="resultsOverlay" class="overlay hidden">
   <div class="modal">
-    <div style="text-align:center;margin-bottom:8px"><span class="badge">V7</span></div>
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V8</span></div>
     <h2>Test Results</h2>
     <div class="panel result" id="resultsPageBox"></div>
     <canvas id="resultsRTChart" class="chart" width="380" height="220" style="margin-top:10px"></canvas>
@@ -282,7 +282,7 @@
     <div class="controls four" style="margin-top:12px">
       <button class="ctrl-btn" id="resultsBackBtn">Restart</button>
       <button class="ctrl-btn" id="resultsStartOverBtn">Reset</button>
-      <button class="ctrl-btn" id="resultsExportBtn">Export</button>
+      <button class="ctrl-btn" id="resultsExportBtn">Save Data</button>
       <button class="ctrl-btn" id="resultsEmailBtn">Email</button>
     </div>
   </div>
@@ -331,7 +331,7 @@
   <!-- topbar -->
   <div class="topbar">
     <div class="topbar-left" id="modeLabel">Subject mode</div>
-    <div style="text-align:center"><span class="badge">V7</span></div>
+    <div style="text-align:center"><span class="badge">V8</span></div>
     <div class="topbar-right" id="phaseLabel">Ready</div>
   </div>
 
@@ -366,16 +366,13 @@
   <!-- controls -->
   <div class="controls four">
     <button class="ctrl-btn" id="startBtn">Start</button>
-    <button class="ctrl-btn" id="exportBtn">Export</button>
-    <button class="ctrl-btn" id="emailBtn">Email</button>
-    <button class="ctrl-btn" id="installBtn" disabled>Install</button>
-  </div>
-  <div class="controls">
     <button class="ctrl-btn" id="backToStartBtn">Restart</button>
     <button class="ctrl-btn" id="startOverBtn">Full Reset</button>
+    <button class="ctrl-btn" id="installBtn" disabled>Add to Home Screen</button>
   </div>
+  <button class="ctrl-btn hidden" id="exportBtn" style="display:none">Save Data</button>
 
-  <div class="statusline" id="statusLine">CogBlock V7 ready.</div>
+  <div class="statusline" id="statusLine">CogBlock V8 ready.</div>
   <div class="panel result hidden" id="resultBox"></div>
 
 </div>
