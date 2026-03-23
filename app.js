@@ -84,7 +84,13 @@ const SAMN_PERELLI = [
 // ─── Settings ───
 function loadSettings() {
   const s = JSON.parse(localStorage.getItem("cogblock_v8_settings") || "null");
-  return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
+  if (!s) return { ...DEFAULTS };
+  // Only carry over keys that exist in DEFAULTS — prevents stale/missing keys crashing
+  const merged = { ...DEFAULTS };
+  for (const k of Object.keys(DEFAULTS)) {
+    if (s[k] !== undefined) merged[k] = s[k];
+  }
+  return merged;
 }
 function saveSettings() {
   localStorage.setItem("cogblock_v8_settings", JSON.stringify(settings));
