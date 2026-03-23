@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V5 — dots/lines layout rebuild
+//  CogBlock V6 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -81,11 +81,11 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v5_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v6_settings") || "null");
   return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v5_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v6_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -100,7 +100,7 @@ const state = {
   overloads: [],
   recoveries: [],
   recoveryCorrectCompleted: 0,
-  history: JSON.parse(localStorage.getItem("cogblock_v5_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v6_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap during paced phase (correct or wrong)
   pacedErrors: 0,        // wrong taps during paced phase only
@@ -116,6 +116,8 @@ const state = {
   calibrationErrors: 0,
   pacedRTs: [],          // correct paced response times (ms)
   rtLog: [],             // {seq, rt, correct, phase} for every paced tap + missed
+  previousMissed: false, // was the immediately preceding paced frame a no-response?
+  lastFrameDuration: null, // duration of the frame that was missed (for late-catch r calc)
   trialOpenedAt: null,
   geo: null,
   benchmark: null,
@@ -371,7 +373,7 @@ function setProbeIdle() {
 // ═══════════════════════════════════════════════════
 
 function updateMetrics() {
-  rateOut.textContent   = state.duration ? `${(1000 / state.duration).toFixed(2)} Hz` : "—";
+  rateOut.textContent   = state.duration ? `${Math.round(state.duration)} ms` : "—";
   blocksOut.textContent = String(state.overloads.length);
   recoveryOut.textContent = String(state.recoveries.length);
   wrongOut.textContent  = String(state.lastFiveAnswers.filter(v => v === false).length + state.calibrationErrors);
@@ -472,7 +474,7 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v5_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v6_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
@@ -502,7 +504,7 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V5  —  Test Results
+`CogBlock V6  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
@@ -562,19 +564,46 @@ function openTrial(kind) {
   }
 }
 
+// ─── New pacing formula ───
+// r = RT / presentationRate
+// Δ = (0.1r - 0.1) * duration   →  negative = speedup, positive = slowdown
+// Correct: apply Δ
+// No response: no change
+// Wrong: +100 ms
+function applyPacingAdjustment(rt, correct, durationUsed) {
+  if (correct) {
+    const r = rt / durationUsed;
+    const delta = (0.1 * r - 0.1) * durationUsed;
+    state.duration = clamp(state.duration + delta, settings.minDurationMs, settings.maxDurationMs);
+  } else {
+    // wrong response
+    state.duration = clamp(state.duration + 100, settings.minDurationMs, settings.maxDurationMs);
+  }
+}
+
 function onPacedFrameEnd() {
   if (state.phase !== "paced") return;
   state.totalTrials += 1;
   const currentMissed = state.current && state.current.kind === "paced" && !state.current.resolved;
+
   if (currentMissed) {
     state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "missed" });
+    // No change to baseline on no-response
+    state.previousMissed = true;
+    state.lastFrameDuration = state.duration;
     if (recordAnswer(false)) return;
+  } else {
+    state.previousMissed = false;
+    state.lastFrameDuration = null;
   }
+
   state.unresolvedStreak = currentMissed ? state.unresolvedStreak + 1 : 0;
   if (state.unresolvedStreak >= settings.consecutiveMissesForBlock) {
     state.blockDuration = state.duration;
     state.overloads.push(state.blockDuration);
     state.unresolvedStreak = 0;
+    state.previousMissed = false;
+    state.lastFrameDuration = null;
     updateCPSDisplay(avgLast2Blocks());
     if (maybeTriggerTerminalRule()) return;
     state.phase = "recovery";
@@ -582,7 +611,6 @@ function onPacedFrameEnd() {
     openTrial("recovery");
     return;
   }
-  state.duration = clamp(state.duration * settings.speedupFactor, settings.minDurationMs, settings.maxDurationMs);
   if (state.totalTrials >= settings.maxTrialCount) {
     state.endReason = `Trial cap reached (${settings.maxTrialCount} trials)`;
     finish();
@@ -649,30 +677,69 @@ function handleTap(index, btnEl) {
     return;
   }
 
-  // Paced phase: allow late response to previous or current
+  // ── Paced phase tap handling ──
+  // Late catch: response to PREVIOUS (missed) frame arriving in current frame window
   if (state.previous && state.previous.kind === "paced" && !state.previous.resolved && trialMatches(state.previous, index)) {
     state.previous.resolved = true;
     state.totalResponses += 1;
-    const rt = performance.now() - state.trialOpenedAt;
+    const rt = performance.now() - state.trialOpenedAt; // time into current frame
+    const wasPostMiss = state.previousMissed;
+    const lastDur = state.lastFrameDuration || state.duration;
+
+    if (rt < 600) {
+      // Fast response after miss — treating as late catch of previous correct
+      // Use effectiveRT = rt + lastFrameDuration for r calculation → slowdown
+      const effectiveRT = rt + lastDur;
+      applyPacingAdjustment(effectiveRT, true, state.duration);
+    } else {
+      // Slow — treat as normal correct on current frame
+      applyPacingAdjustment(rt, true, state.duration);
+    }
+
     state.pacedRTs.push(rt);
-    state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced" });
+    state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced_late" });
+    state.previousMissed = false;
+    state.lastFrameDuration = null;
     flashBtn(index, true);
     if (recordAnswer(true)) return;
     return;
   }
+
+  // Response to CURRENT frame
   if (state.current && state.current.kind === "paced" && !state.current.resolved && trialMatches(state.current, index)) {
     state.current.resolved = true;
     state.totalResponses += 1;
     const rt = performance.now() - state.trialOpenedAt;
+    const wasPostMiss = state.previousMissed;
+
+    if (wasPostMiss && rt < 600) {
+      // Fast response on current frame after a miss on previous — use effectiveRT for r
+      const lastDur = state.lastFrameDuration || state.duration;
+      const effectiveRT = rt + lastDur;
+      applyPacingAdjustment(effectiveRT, true, state.duration);
+    } else {
+      // Normal correct — speedup/slowdown per formula
+      applyPacingAdjustment(rt, true, state.duration);
+    }
+
     state.pacedRTs.push(rt);
     state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced" });
+    state.previousMissed = false;
+    state.lastFrameDuration = null;
     flashBtn(index, true);
     if (recordAnswer(true)) return;
     return;
   }
+
+  // Wrong response (no match)
   state.totalResponses += 1;
   state.pacedErrors += 1;
+  const wasPostMissWrong = state.previousMissed;
+  // Wrong after miss: +100ms (already handled by applyPacingAdjustment wrong branch)
+  applyPacingAdjustment(null, false, state.duration);
   state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "paced" });
+  state.previousMissed = false;
+  state.lastFrameDuration = null;
   flashBtn(index, false);
   recordAnswer(false);
 }
@@ -1075,14 +1142,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v5_results.json";
+  a.download = "cogblock_v6_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V5 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V6 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1128,6 +1195,8 @@ function clearCurrentSession() {
   state.calibrationRTs = []; state.calibrationErrors = 0;
   state.pacedRTs = [];
   state.rtLog = [];
+  state.previousMissed = false;
+  state.lastFrameDuration = null;
   state.geo = null; state.benchmark = null; state.lastResultText = null;
   updateCPSDisplay(null);
   updateMetrics();
@@ -1172,6 +1241,8 @@ async function startTest() {
   state.calibrationRTs = []; state.calibrationErrors = 0;
   state.pacedRTs = [];
   state.rtLog = [];
+  state.previousMissed = false;
+  state.lastFrameDuration = null;
   setTestingQuiet(true);
   await captureGeoAndAddress();
   await runDeviceBenchmark();
@@ -1225,7 +1296,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v5_admin.json"; a.click();
+  a.download = "cogblock_v6_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1245,7 +1316,7 @@ $("resultsEmailBtn").onclick = emailResults;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("Install adds CogBlock V5 to your home screen for offline use.");
+  setStatus("Install adds CogBlock V6 to your home screen for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
