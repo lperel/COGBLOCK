@@ -256,7 +256,7 @@ async function runDeviceBenchmark(force) {
   const enabled = force || Number(settings.deviceBenchmarkEnabled || 0) === 1;
   if (!enabled) { state.benchmark = null; return; }
 
-  const BENCH_TRIALS = 100;
+  const BENCH_TRIALS = 1000;
 
   const overlay     = $("benchmarkOverlay");
   const statusLine  = $("benchStatusLine");
@@ -1811,7 +1811,11 @@ if (runBenchBtn) runBenchBtn.onclick = async () => {
   $("adminOverlay").classList.add("hidden");
   await runDeviceBenchmark(true);
 };
+const benchMain   = $("benchMainBtn");
 const benchAdmin  = $("benchAdminBtn");
+if (benchMain) benchMain.onclick = () => {
+  $("benchmarkOverlay").classList.add("hidden");
+};
 if (benchRetest) benchRetest.onclick = () => {
   const overlay = $("benchmarkOverlay");
   if (overlay) overlay.classList.add("hidden");
