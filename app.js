@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  BlockRate v1 — dots/lines layout rebuild
+//  CogBlock V2 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -13,15 +13,15 @@ const DEFAULTS = {
   wrongWindowSize: 5,
   wrongThresholdStop: 4,
   maxTrialCount: 180,
-  minDurationMs: 45000,
-  maxDurationMs: 180000,
+  minDurationMs: 800,
+  maxDurationMs: 10000,
   initialUnusedCalibrationTrials: 1,
   initialMeasuredCalibrationTrials: 20,
   initialPacedPercent: 0.70,
   calibrationStopErrors: 5,
-  calibrationStopSlowMs: 20000,
-  cpsBestMs: 2000,
-  cpsWorstMs: 5000,
+  calibrationStopSlowMs: 10000,
+  cpsBestMs: 800,
+  cpsWorstMs: 3000,
   deviceBenchmarkEnabled: 0
 };
 
@@ -79,11 +79,11 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("blockrate_v1_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v2_settings") || "null");
   return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
 }
 function saveSettings() {
-  localStorage.setItem("blockrate_v1_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v2_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -98,7 +98,7 @@ const state = {
   overloads: [],
   recoveries: [],
   recoveryCorrectCompleted: 0,
-  history: JSON.parse(localStorage.getItem("blockrate_v1_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v2_history") || "[]"),
   totalTrials: 0,
   trialTimer: null,
   absoluteNoResponseTimer: null,
@@ -362,10 +362,8 @@ function recordAnswer(ok) {
   updateMetrics();
   const wc = state.lastFiveAnswers.filter(v => v === false).length;
   if (state.lastFiveAnswers.length === settings.wrongWindowSize && wc > settings.wrongThresholdStop) {
-    clearTimer(); clearNoResponseTimer();
-    state.phase = "finished";
     state.endReason = `More than ${settings.wrongThresholdStop} wrong answers out of last ${settings.wrongWindowSize}. Restart required.`;
-    setStatus(state.endReason);
+    finish();
     return true;
   }
   return false;
@@ -390,11 +388,8 @@ function maybeTriggerTerminalRule() {
 }
 
 function failCalibrationAndRetest(reason) {
-  clearTimer(); clearNoResponseTimer();
-  state.phase = "finished";
   state.endReason = reason + " Retest required.";
-  setProbeIdle();
-  setStatus("Retest required");
+  finish();
 }
 
 function finishCalibration() {
@@ -423,12 +418,12 @@ function finish() {
     geo: state.geo
   };
   state.history.push(result);
-  localStorage.setItem("blockrate_v1_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v2_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
   const fatigueText = state.samnPerelli ? `${state.samnPerelli.score} — ${state.samnPerelli.label}` : "not recorded";
-  const text = `BlockRate v1
+  const text = `CogBlock V2
 
 Subject ID: ${result.subjectId}
 Samn–Perelli: ${fatigueText}
@@ -683,14 +678,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "blockrate_v1_results.json";
+  a.download = "cogblock_v2_results.json";
   a.click();
 }
 
 function emailResults() {
   const last = state.history[state.history.length - 1] || {};
   const body = encodeURIComponent(JSON.stringify(last, null, 2));
-  window.location.href = `mailto:?subject=BlockRate v1&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V2&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -820,7 +815,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "blockrate_v1_admin.json"; a.click();
+  a.download = "cogblock_v2_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();

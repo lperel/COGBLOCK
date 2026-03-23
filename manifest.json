@@ -1,6 +1,6 @@
 {
-  "name": "BlockRate v1",
-  "short_name": "BlockRateV1",
+  "name": "CogBlock V2",
+  "short_name": "CogBlockV2",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0b1830",
