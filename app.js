@@ -53,22 +53,23 @@ const ADMIN_FIELDS = [
 ];
 
 // ─── Pattern definitions (1–6 dots / 1–6 lines) ───
+// Coordinates are % of cell — spread wide (15–85) for maximum readability
 const DOT_PATTERNS = {
   1:[["dot",50,50]],
-  2:[["dot",33,50],["dot",67,50]],
-  3:[["dot",50,28],["dot",33,64],["dot",67,64]],
-  4:[["dot",33,33],["dot",67,33],["dot",33,67],["dot",67,67]],
-  5:[["dot",33,33],["dot",67,33],["dot",50,50],["dot",33,67],["dot",67,67]],
-  6:[["dot",33,24],["dot",67,24],["dot",33,50],["dot",67,50],["dot",33,76],["dot",67,76]]
+  2:[["dot",22,50],["dot",78,50]],
+  3:[["dot",50,18],["dot",22,75],["dot",78,75]],
+  4:[["dot",22,22],["dot",78,22],["dot",22,78],["dot",78,78]],
+  5:[["dot",22,22],["dot",78,22],["dot",50,50],["dot",22,78],["dot",78,78]],
+  6:[["dot",22,18],["dot",78,18],["dot",22,50],["dot",78,50],["dot",22,82],["dot",78,82]]
 };
 
 const LINE_PATTERNS = {
   1:[["v",50,50]],
-  2:[["v",30,50],["v",70,50]],
-  3:[["v",20,50],["v",50,50],["v",80,50]],
-  4:[["v",30,30],["v",70,30],["v",30,70],["v",70,70]],
-  5:[["v",30,28],["v",70,28],["v",50,50],["v",30,72],["v",70,72]],
-  6:[["v",22,24],["v",50,24],["v",78,24],["v",22,72],["v",50,72],["v",78,72]]
+  2:[["v",22,50],["v",78,50]],
+  3:[["v",15,50],["v",50,50],["v",85,50]],
+  4:[["v",22,25],["v",78,25],["v",22,75],["v",78,75]],
+  5:[["v",22,22],["v",78,22],["v",50,50],["v",22,78],["v",78,78]],
+  6:[["v",15,18],["v",50,18],["v",85,18],["v",15,78],["v",50,78],["v",85,78]]
 };
 
 const SAMN_PERELLI = [
@@ -270,10 +271,10 @@ async function runDeviceBenchmark() {
  * size: "large" for stim cells, "probe" for center, "small" for refresher
  */
 function patternToSVG(pattern, size = "large") {
-  const dim = size === "probe" ? 72 : size === "small" ? 40 : 56;
-  const dotR = size === "probe" ? 7 : size === "small" ? 5 : 6;
-  const lineW = size === "probe" ? 9 : size === "small" ? 6 : 8;
-  const lineH = size === "probe" ? 22 : size === "small" ? 14 : 18;
+  const dim  = size === "probe" ? 72 : size === "small" ? 40 : 56;
+  const dotR = size === "probe" ? 8  : size === "small" ? 5  : 7;
+  const lineW = size === "probe" ? 10 : size === "small" ? 6  : 9;
+  const lineH = size === "probe" ? 26 : size === "small" ? 15 : 22;
   const marks = pattern.map(([k, x, y]) => {
     const px = (x / 100) * dim, py = (y / 100) * dim;
     if (k === "dot") return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${dotR}" fill="var(--text)"/>`;
