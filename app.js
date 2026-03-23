@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V10 — dots/lines layout rebuild
+//  CogBlock V11 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -83,7 +83,7 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v10_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v11_settings") || "null");
   if (!s) return { ...DEFAULTS };
   // Only carry over keys that exist in DEFAULTS — prevents stale/missing keys crashing
   const merged = { ...DEFAULTS };
@@ -93,7 +93,7 @@ function loadSettings() {
   return merged;
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v10_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v11_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -110,11 +110,12 @@ const state = {
   recoveryCorrectCompleted: 0,  // used by terminal_recovery only
   spCorrectStreak: 0,           // consecutive corrects in SP restart phase
   spWrongCount: 0,              // total wrongs in SP restart phase
-  history: JSON.parse(localStorage.getItem("cogblock_v10_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v11_history") || "[]"),
   totalTrials: 0,
-  totalResponses: 0,     // every tap during paced phase (correct or wrong)
-  totalCorrect: 0,       // correct across ALL phases
-  totalIncorrect: 0,     // incorrect across ALL phases
+  totalResponses: 0,     // every tap (calibration + paced + recovery)
+  totalCorrect: 0,       // correct taps across ALL phases
+  totalIncorrect: 0,     // incorrect taps across ALL phases (not including misses)
+  missedTrials: 0,       // paced frames with no response
   pacedErrors: 0,        // wrong taps during paced phase only
   rollMeanLog: [],       // last N answers (true/false) across all phases for roll mean check
   testStartTime: null,   // performance.now() at test start
@@ -503,6 +504,7 @@ function finish() {
     totalTrials:                state.totalTrials,
     totalCorrect:               state.totalCorrect,
     totalIncorrect:             state.totalIncorrect,
+    missedTrials:               state.missedTrials,
     pacedErrors:                state.pacedErrors,
     pacedResponseCount:         state.pacedRTs.length,
     pacedResponseMeanMs:        state.pacedRTs.length ? mean(state.pacedRTs) : null,
@@ -515,7 +517,7 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v10_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v11_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
@@ -545,7 +547,7 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V10  —  Test Results
+`CogBlock V11  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
@@ -565,15 +567,15 @@ ${blockList}
   CPS:                 ${cps != null ? cps.toFixed(1) + " / 100" : "—"}
 ${hr}
 RESPONSE STATISTICS
-  Total taps (all phases):   ${result.totalResponses}
-  Correct taps:              ${result.totalCorrect}
-  Incorrect taps:            ${result.totalIncorrect - result.pacedErrors}  (calibration + recovery)
-  Missed (no response):      ${result.totalTrials - result.pacedResponseCount - result.pacedErrors}
-  Paced correct taps:        ${result.pacedResponseCount}
-  Paced wrong taps:          ${result.pacedErrors}
-  Mean paced RT:             ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
-  Paced RT SD:               ${sd != null ? sd.toFixed(1) + " ms" : "—"}
-  Test duration:             ${formatDuration(testDurMs)}
+  Total taps:            ${result.totalResponses}
+    Correct:             ${result.totalCorrect}
+    Incorrect:           ${result.totalIncorrect}
+  Missed (no response):  ${result.missedTrials}
+  Paced correct taps:    ${result.pacedResponseCount}
+  Paced wrong taps:      ${result.pacedErrors}
+  Mean paced RT:         ${result.pacedResponseMeanMs != null ? result.pacedResponseMeanMs.toFixed(1) + " ms" : "—"}
+  Paced RT SD:           ${sd != null ? sd.toFixed(1) + " ms" : "—"}
+  Test duration:         ${formatDuration(testDurMs)}
 ${hr}
 END REASON
   ${result.endReason}`;
@@ -632,7 +634,7 @@ function onPacedFrameEnd() {
 
   if (currentMissed) {
     state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "missed" });
-    state.totalIncorrect += 1;  // missed = wrong outcome but NOT a tap response
+    state.missedTrials += 1;       // missed = no tap, not a wrong tap
     state.previousMissed = true;
     state.lastFrameDuration = state.duration;
     if (recordAnswer(false, true)) return;  // isMiss=true
@@ -1237,14 +1239,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v10_results.json";
+  a.download = "cogblock_v11_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V10 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V11 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1287,7 +1289,7 @@ function clearCurrentSession() {
   state.spCorrectStreak = 0; state.spWrongCount = 0;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
-  state.totalCorrect = 0; state.totalIncorrect = 0; state.rollMeanLog = [];
+  state.totalCorrect = 0; state.totalIncorrect = 0; state.missedTrials = 0; state.rollMeanLog = [];
   state.lastFiveAnswers = [];
   state.calibrationTrialIndex = 0;
   state.calibrationRTs = []; state.calibrationErrors = 0;
@@ -1335,7 +1337,7 @@ async function startTest() {
   state.spCorrectStreak = 0; state.spWrongCount = 0;
   state.totalTrials = 0; state.endReason = "";
   state.totalResponses = 0; state.pacedErrors = 0; state.testStartTime = null;
-  state.totalCorrect = 0; state.totalIncorrect = 0; state.rollMeanLog = [];
+  state.totalCorrect = 0; state.totalIncorrect = 0; state.missedTrials = 0; state.rollMeanLog = [];
   state.lastFiveAnswers = [];
   state.calibrationTrialIndex = 0;
   state.calibrationRTs = []; state.calibrationErrors = 0;
@@ -1396,7 +1398,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v10_admin.json"; a.click();
+  a.download = "cogblock_v11_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1414,7 +1416,7 @@ $("resultsEmailBtn").onclick = emailResults;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("'Add to Home Screen' saves CogBlock V10 as an app for offline use.");
+  setStatus("'Add to Home Screen' saves CogBlock V11 as an app for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
