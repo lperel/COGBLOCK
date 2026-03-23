@@ -492,7 +492,8 @@ function finishCalibration() {
   const pacedStart = clamp(avg * settings.initialPacedPercent, settings.minDurationMs, settings.maxDurationMs);
   state.duration = pacedStart;
   state.phase = "paced";
-  armMaxTestTimer();
+  state.testStartTime = performance.now();  // start duration clock when MP begins
+  armMaxTestTimer();                         // max-test timer starts at same moment
   setStatus(`Machine-paced start: ${pacedStart.toFixed(1)} ms`);
   openTrial("paced");
 }
@@ -1366,7 +1367,6 @@ async function startTest() {
   state.previousMissed = false;
   state.lastFrameDuration = null;
   setTestingQuiet(true);
-  state.testStartTime = performance.now();  // start timer here — includes calibration
   await captureGeoAndAddress();
   await runDeviceBenchmark();
   noteAnyResponse();
