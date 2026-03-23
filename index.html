@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1830" />
+  <link rel="manifest" href="manifest.json" />
+  <title>BlockRate v1</title>
+  <style>
+    :root{
+      --bg:#091426; --bg2:#132746; --panel:#0d1b33; --panel2:#10213e;
+      --text:#f5fbff; --muted:#d7e7f8; --edge:#4f6f99; --accent:#7fd7ff; --probe:#00f0ff;
+    }
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+
+    body{
+      min-height:100svh;color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+      background:
+        radial-gradient(circle at 50% 12%, rgba(103,198,255,.12), transparent 25%),
+        linear-gradient(135deg,var(--bg2),var(--bg) 58%, #060c16);
+      display:flex;align-items:center;justify-content:center;
+    }
+
+    /* ── main app shell ── */
+    .app{
+      width:100%;max-width:420px;min-height:100svh;
+      padding:8px 8px calc(10px + env(safe-area-inset-bottom));
+      display:flex;flex-direction:column;gap:6px;
+    }
+
+    /* ── top bar ── */
+    .topbar{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:2px 4px;
+    }
+    .topbar-left{font-size:14px;color:var(--muted);font-weight:600}
+    .topbar-right{font-size:14px;color:var(--muted)}
+    .badge{
+      display:inline-block;padding:4px 14px;border:1px solid var(--edge);border-radius:999px;
+      font-size:13px;font-weight:700;color:#d9fbff;background:#0a1629;letter-spacing:.06em
+    }
+
+    /* ── panels ── */
+    .panel{
+      border:1px solid var(--edge);border-radius:20px;padding:10px;
+      background:linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)), var(--panel);
+    }
+
+    /* ── 2×3 stimulus grid ── */
+    .stim-grid{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+    }
+    .stim-cell{
+      aspect-ratio:1;border-radius:14px;border:1px solid var(--edge);background:#0a1629;
+      display:flex;align-items:center;justify-content:center;
+      position:relative;font-size:11px;color:var(--muted);
+    }
+    .cell-label{
+      position:absolute;top:5px;left:7px;font-size:11px;
+      color:var(--muted);font-weight:700;letter-spacing:.04em;
+    }
+
+    /* ── probe (center) ── */
+    .probe-row{
+      display:flex;align-items:center;justify-content:center;
+      padding:4px 0;
+    }
+    .probe-cell{
+      width:clamp(96px,28vw,130px);height:clamp(96px,28vw,130px);
+      border-radius:50%;border:3px solid var(--probe);background:#0d1b33;
+      display:flex;align-items:center;justify-content:center;flex-direction:column;
+      position:relative;
+      box-shadow:0 0 22px rgba(0,234,255,0.85),0 0 50px rgba(0,234,255,0.55),0 0 90px rgba(0,234,255,0.3),inset 0 0 14px rgba(0,234,255,0.4);
+      animation:probePulse 1.4s ease-in-out infinite;
+    }
+    .probe-label{
+      font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#baf6ff;
+      text-shadow:0 0 8px rgba(0,234,255,.7);margin-bottom:4px;font-weight:700
+    }
+    @keyframes probePulse{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}}
+
+    /* ── response buttons grid ── */
+    .resp-grid{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+    }
+    .resp-btn{
+      aspect-ratio:1;border-radius:14px;border:2px solid var(--edge);background:#112244;
+      display:flex;align-items:center;justify-content:center;
+      font-size:13px;font-weight:800;color:var(--muted);
+      cursor:pointer;transition:transform .1s ease, border-color .1s, background .1s;
+      -webkit-tap-highlight-color:transparent;
+      position:relative;
+    }
+    .resp-btn:active{transform:scale(.95);background:#1a3366;border-color:var(--accent)}
+    .resp-btn.correct-flash{border-color:#00ff88;background:rgba(0,255,136,.18);transition:none}
+    .resp-btn.wrong-flash{border-color:#ff4466;background:rgba(255,68,102,.18);transition:none}
+
+    /* ── metrics strip ── */
+    .metrics{
+      display:grid;grid-template-columns:repeat(3,1fr);gap:4px;
+    }
+    .metric{
+      padding:6px 4px;border-radius:12px;border:1px solid var(--edge);
+      background:#0d1b33;text-align:center;
+    }
+    .metric-label{font-size:11px;color:var(--muted);font-weight:600}
+    .metric-val{font-size:16px;font-weight:800;color:var(--text);margin-top:2px}
+
+    /* ── control buttons ── */
+    .controls{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+    .controls.four{grid-template-columns:repeat(4,1fr)}
+    .ctrl-btn{
+      border:1px solid var(--edge);border-radius:12px;background:#112244;
+      color:var(--text);font-size:14px;font-weight:700;padding:11px 6px;
+      cursor:pointer;min-height:44px;
+    }
+    .ctrl-btn:active{background:#1a3366}
+
+    /* ── status line ── */
+    .statusline{
+      text-align:center;font-size:15px;font-weight:600;color:var(--muted);
+      min-height:24px;padding:2px 4px;
+    }
+
+    /* ── result box ── */
+    .result{
+      font-size:14px;line-height:1.55;white-space:pre-line;
+      color:var(--muted);text-align:left;
+    }
+
+    /* ── overlays ── */
+    .overlay{
+      position:fixed;inset:0;z-index:100;display:flex;align-items:flex-start;justify-content:center;
+      padding:10px;background:rgba(2,8,16,.72);backdrop-filter:blur(4px);overflow:auto;
+    }
+    .hidden{display:none !important}
+    .modal{
+      max-width:min(96vw,440px);width:100%;border-radius:24px;padding:18px 16px;
+      background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01)), var(--panel2);
+      border:1px solid var(--edge);margin-top:8px;
+    }
+    .modal h2{text-align:center;font-size:20px;margin-bottom:10px;color:var(--text)}
+    .modal-hint{font-size:13px;color:var(--muted);text-align:center;margin-bottom:12px}
+
+    /* subject form */
+    .field-row{display:grid;grid-template-columns:1fr 140px;gap:8px;align-items:center;margin-bottom:10px}
+    .field-row label{font-size:15px;font-weight:600;color:var(--text)}
+    .field-hint{font-size:12px;color:var(--muted);margin-top:2px}
+    .field-row input{
+      padding:11px 10px;border:1px solid var(--edge);border-radius:12px;
+      background:#0a1629;color:var(--text);font-size:16px;width:100%
+    }
+
+    /* fatigue list */
+    .fatigue-list{display:grid;gap:8px}
+    .fatigue-item{
+      border:1px solid var(--edge);border-radius:14px;padding:14px 14px;
+      background:#0b172a;color:var(--text);text-align:left;font-size:17px;
+      line-height:1.3;cursor:pointer;font-weight:500;
+    }
+    .fatigue-item:active{background:#1a3366}
+
+    /* refresher */
+    .refresher-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .ref-card{
+      border:1px solid var(--edge);border-radius:14px;padding:12px 8px;
+      background:#0a1629;display:flex;flex-direction:column;align-items:center;gap:6px
+    }
+    .ref-num{font-size:13px;font-weight:800;color:var(--accent)}
+    .ref-row{display:flex;align-items:center;gap:8px}
+    .ref-arrow{font-size:18px;color:var(--muted)}
+    .ref-lbl{font-size:11px;color:var(--muted);text-align:center;margin-bottom:2px;font-weight:600}
+
+    /* chart */
+    .chart{width:100%;height:150px;border:1px solid var(--edge);border-radius:14px;background:#081321;margin-top:8px}
+
+    /* admin */
+    .admin-fields{display:grid;gap:8px}
+
+    /* SVG patterns */
+    .pat-holder{display:flex;align-items:center;justify-content:center}
+    .pat-svg{overflow:visible}
+
+    /* probe idle state */
+    .probe-cell.idle{animation:none;box-shadow:none;border-color:var(--edge);opacity:.5}
+
+    /* position number on resp buttons */
+    .resp-pos{
+      position:absolute;top:5px;left:7px;font-size:11px;
+      color:var(--muted);font-weight:700;opacity:.7
+    }
+
+    @media(max-width:380px){
+      .topbar-left,.topbar-right{font-size:12px}
+      .metric-label{font-size:10px}
+      .metric-val{font-size:14px}
+      .ctrl-btn{font-size:13px;padding:9px 4px}
+      .statusline{font-size:13px}
+      .fatigue-item{font-size:15px}
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════ SUBJECT ID OVERLAY ═══════════ -->
+<div id="subjectOverlay" class="overlay">
+  <div class="modal">
+    <div style="text-align:center;margin-bottom:10px"><span class="badge">V1</span></div>
+    <h2>BlockRate</h2>
+    <p class="modal-hint">Enter your Subject ID to begin.</p>
+    <div class="field-row">
+      <label>Subject ID<div class="field-hint">6 letters/numbers, or 0 for Guest</div></label>
+      <input id="subjectIdInput" maxlength="6" placeholder="A12B34 or 0" autocapitalize="characters">
+    </div>
+    <div class="controls" style="margin-top:6px">
+      <button class="ctrl-btn" id="subjectNextBtn">Continue</button>
+      <button class="ctrl-btn" id="adminOpenBtn">Admin</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ REFRESHER OVERLAY ═══════════ -->
+<div id="refresherOverlay" class="overlay hidden">
+  <div class="modal">
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V1</span></div>
+    <h2>Pattern Refresher</h2>
+    <p class="modal-hint">Dot quantity matches line quantity. Match dots→lines or lines→dots.</p>
+    <div class="panel" style="margin-bottom:12px">
+      <div id="refresherGrid" class="refresher-grid"></div>
+    </div>
+    <div class="controls four">
+      <button class="ctrl-btn" id="skipRefresherBtn">Skip</button>
+      <button class="ctrl-btn" id="continueRefresherBtn">Continue</button>
+      <button class="ctrl-btn" id="refBackBtn">← Start</button>
+      <button class="ctrl-btn" id="refStartOverBtn">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ FATIGUE OVERLAY ═══════════ -->
+<div id="fatigueOverlay" class="overlay hidden">
+  <div class="modal">
+    <h2>S-PF Checklist</h2>
+    <p class="modal-hint">How do you feel right now?</p>
+    <div class="fatigue-list" id="fatigueList"></div>
+    <div class="controls" style="margin-top:12px">
+      <button class="ctrl-btn" id="fatigueBackBtn">← Start</button>
+      <button class="ctrl-btn" id="fatigueStartOverBtn">Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ RESULTS OVERLAY ═══════════ -->
+<div id="resultsOverlay" class="overlay hidden">
+  <div class="modal">
+    <div style="text-align:center;margin-bottom:8px"><span class="badge">V1</span></div>
+    <h2>Test Results</h2>
+    <div class="panel result" id="resultsPageBox"></div>
+    <canvas id="resultsCpsChart" class="chart" width="380" height="150"></canvas>
+    <canvas id="resultsSpfChart" class="chart" width="380" height="150"></canvas>
+    <div class="controls four" style="margin-top:12px">
+      <button class="ctrl-btn" id="resultsBackBtn">← Start</button>
+      <button class="ctrl-btn" id="resultsStartOverBtn">Reset</button>
+      <button class="ctrl-btn" id="resultsExportBtn">Export</button>
+      <button class="ctrl-btn" id="resultsEmailBtn">Email</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN OVERLAY ═══════════ -->
+<div id="adminOverlay" class="overlay hidden">
+  <div class="modal">
+    <div id="adminGate">
+      <h2>Admin</h2>
+      <div class="field-row">
+        <label>Passcode</label>
+        <input id="adminPass" type="password" placeholder="Enter passcode">
+      </div>
+      <div class="controls four">
+        <button class="ctrl-btn" id="unlockBtn">Unlock</button>
+        <button class="ctrl-btn" id="closeAdminBtn">Close</button>
+        <button class="ctrl-btn" id="adminBackBtn">← Start</button>
+        <button class="ctrl-btn" id="adminStartOverBtn">Reset</button>
+      </div>
+    </div>
+    <div id="adminBody" class="hidden">
+      <div style="text-align:center;margin-bottom:8px"><span class="badge">Admin</span></div>
+      <div class="admin-fields" id="adminSettings"></div>
+      <canvas id="adminCpsChart" class="chart" width="380" height="150"></canvas>
+      <canvas id="adminSpfChart" class="chart" width="380" height="150"></canvas>
+      <div id="adminBenchmarkNote" style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px"></div>
+      <div class="controls" style="margin-top:10px">
+        <button class="ctrl-btn" id="saveAdminBtn">Save</button>
+        <button class="ctrl-btn" id="resetAdminBtn">Reset</button>
+      </div>
+      <div class="controls" style="margin-top:6px">
+        <button class="ctrl-btn" id="closeAdminBtn2">Close</button>
+        <button class="ctrl-btn" id="exportAdminBtn">Export</button>
+      </div>
+      <div class="controls" style="margin-top:6px">
+        <button class="ctrl-btn" id="adminBackBtn2">← Start</button>
+        <button class="ctrl-btn" id="adminStartOverBtn2">Full Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ MAIN APP ═══════════ -->
+<div class="app">
+
+  <!-- topbar -->
+  <div class="topbar">
+    <div class="topbar-left" id="modeLabel">Subject mode</div>
+    <div style="text-align:center"><span class="badge">V1</span></div>
+    <div class="topbar-right" id="phaseLabel">Ready</div>
+  </div>
+
+  <!-- TOP: 2×3 stimulus grid -->
+  <div class="panel">
+    <div class="stim-grid" id="stimGrid"></div>
+  </div>
+
+  <!-- MIDDLE: probe -->
+  <div class="probe-row">
+    <div class="probe-cell idle" id="probeCell">
+      <div class="probe-label">MATCH</div>
+      <div id="probeInner"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM: 2×3 response buttons -->
+  <div class="panel">
+    <div class="resp-grid" id="respGrid"></div>
+  </div>
+
+  <!-- metrics -->
+  <div class="metrics" id="metricsPanel">
+    <div class="metric"><div class="metric-label">Rate</div><div class="metric-val" id="rateOut">—</div></div>
+    <div class="metric"><div class="metric-label">Blocks</div><div class="metric-val" id="blocksOut">0</div></div>
+    <div class="metric"><div class="metric-label">Recoveries</div><div class="metric-val" id="recoveryOut">0</div></div>
+    <div class="metric"><div class="metric-label">Wrong</div><div class="metric-val" id="wrongOut">0</div></div>
+    <div class="metric"><div class="metric-label">S-PF</div><div class="metric-val" id="fatigueOut">—</div></div>
+    <div class="metric"><div class="metric-label">CPS</div><div class="metric-val" id="cpsOut">—</div></div>
+  </div>
+
+  <!-- controls -->
+  <div class="controls four">
+    <button class="ctrl-btn" id="startBtn">Start</button>
+    <button class="ctrl-btn" id="exportBtn">Export</button>
+    <button class="ctrl-btn" id="emailBtn">Email</button>
+    <button class="ctrl-btn" id="installBtn" disabled>Install</button>
+  </div>
+  <div class="controls">
+    <button class="ctrl-btn" id="backToStartBtn">← Start</button>
+    <button class="ctrl-btn" id="startOverBtn">Full Reset</button>
+  </div>
+
+  <div class="statusline" id="statusLine">BlockRate v1 ready.</div>
+  <div class="panel result hidden" id="resultBox"></div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
