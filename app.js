@@ -1812,6 +1812,7 @@ if (runBenchBtn) runBenchBtn.onclick = async () => {
   await runDeviceBenchmark(true);
 };
 const benchMain   = $("benchMainBtn");
+const benchRetest = $("benchRetestBtn");
 const benchAdmin  = $("benchAdminBtn");
 if (benchMain) benchMain.onclick = () => {
   $("benchmarkOverlay").classList.add("hidden");
