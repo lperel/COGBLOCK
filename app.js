@@ -252,8 +252,8 @@ async function captureGeoAndAddress() {
 // Phase 1: how fast can the processor generate + render 100 trials?
 // Phase 2: how accurately does setTimeout(0) fire — measures JS scheduler overhead.
 // Both phases run as fast as the processor allows — no deliberate waits.
-async function runDeviceBenchmark() {
-  const enabled = Number(settings.deviceBenchmarkEnabled || 0) === 1;
+async function runDeviceBenchmark(force) {
+  const enabled = force || Number(settings.deviceBenchmarkEnabled || 0) === 1;
   if (!enabled) { state.benchmark = null; return; }
 
   const BENCH_TRIALS = 100;
@@ -1783,7 +1783,7 @@ $("startBtn").onclick       = startTest;
 $("backToStartBtn").onclick = goToStartPage;
 $("startOverBtn").onclick   = startOverFlow;
 const mainBenchBtn = $("mainBenchmarkBtn");
-if (mainBenchBtn) mainBenchBtn.onclick = async () => { await runDeviceBenchmark(); };
+if (mainBenchBtn) mainBenchBtn.onclick = async () => { await runDeviceBenchmark(true); };
 $("resultsBackBtn").onclick  = goToStartPage;
 $("resultsStartOverBtn").onclick = startOverFlow;
 $("resultsExportBtn").onclick= exportResults;
@@ -1809,13 +1809,13 @@ if (summaryReset)   summaryReset.onclick   = startOverFlow;
 const runBenchBtn = $("runBenchmarkBtn");
 if (runBenchBtn) runBenchBtn.onclick = async () => {
   $("adminOverlay").classList.add("hidden");
-  await runDeviceBenchmark();
+  await runDeviceBenchmark(true);
 };
 const benchAdmin  = $("benchAdminBtn");
 if (benchRetest) benchRetest.onclick = () => {
   const overlay = $("benchmarkOverlay");
   if (overlay) overlay.classList.add("hidden");
-  setTimeout(async () => { await runDeviceBenchmark(); }, 200);
+  setTimeout(async () => { await runDeviceBenchmark(true); }, 200);
 };
 if (benchAdmin) benchAdmin.onclick = () => {
   const overlay = $("benchmarkOverlay");
