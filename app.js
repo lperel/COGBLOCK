@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V11 — dots/lines layout rebuild
+//  CogBlock V12 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -84,7 +84,7 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v11_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v12_settings") || "null");
   if (!s) return { ...DEFAULTS };
   // Only carry over keys that exist in DEFAULTS — prevents stale/missing keys crashing
   const merged = { ...DEFAULTS };
@@ -94,7 +94,7 @@ function loadSettings() {
   return merged;
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v11_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v12_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -113,7 +113,7 @@ const state = {
   spWrongCount: 0,              // total wrongs in SP restart phase
   terminalBlockReason: null,    // description of convergent blocks that triggered terminal rule
   _benchResolve: null,          // resolves benchmark promise on user action
-  history: JSON.parse(localStorage.getItem("cogblock_v11_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v12_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap (calibration + paced + recovery)
   totalCorrect: 0,       // correct taps across ALL phases
@@ -703,7 +703,7 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v11_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v12_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
@@ -733,7 +733,7 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V11  —  Test Results
+`CogBlock V12  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
@@ -1421,14 +1421,137 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v11_results.json";
+  a.download = "cogblock_v12_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V11 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V12 Results&body=${body}`;
+}
+
+// ═══════════════════════════════════════════════════
+//  FIRE / SMOKE / SPARKS PARTICLE SYSTEM
+// ═══════════════════════════════════════════════════
+let _fxRaf = null;
+const _particles = [];
+
+function startFX() {
+  const canvas = $("fxCanvas");
+  const box    = $("thinkingBox");
+  if (!canvas || !box) return;
+
+  const br  = box.getBoundingClientRect();
+  const PAD = 60;
+  canvas.width  = br.width  + PAD * 2;
+  canvas.height = br.height + PAD * 2;
+  canvas.style.left     = `-${PAD}px`;
+  canvas.style.top      = `-${PAD}px`;
+  canvas.style.width    = `${br.width  + PAD * 2}px`;
+  canvas.style.height   = `${br.height + PAD * 2}px`;
+  canvas.style.zIndex   = "0";
+  canvas.style.position = "absolute";
+
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext("2d");
+
+  // Gear corner positions in canvas coords (offset by PAD)
+  const corners = [
+    { x: PAD + 22,              y: PAD + 22 },
+    { x: PAD + br.width  - 22,  y: PAD + 22 },
+    { x: PAD + 22,              y: PAD + br.height - 22 },
+    { x: PAD + br.width  - 22,  y: PAD + br.height - 22 },
+  ];
+
+  _particles.length = 0;
+
+  function spawn() {
+    corners.forEach(c => {
+      // Fire — 2 per corner per frame
+      for (let i = 0; i < 2; i++) {
+        _particles.push({
+          type:"fire", x: c.x + (Math.random()-.5)*8, y: c.y,
+          vx:(Math.random()-.5)*1.2, vy:-(Math.random()*2.5+1.5),
+          life:1, decay:Math.random()*.03+.025,
+          size:Math.random()*5+3, hue:Math.random()*30
+        });
+      }
+      // Smoke — 35% chance per corner
+      if (Math.random()<.35) {
+        _particles.push({
+          type:"smoke", x: c.x+(Math.random()-.5)*10, y: c.y-8,
+          vx:(Math.random()-.5)*.6, vy:-(Math.random()*1.2+.6),
+          life:1, decay:Math.random()*.012+.008, size:Math.random()*12+8
+        });
+      }
+      // Sparks — 25% chance per corner
+      if (Math.random()<.25) {
+        const ang = Math.random()*Math.PI*2;
+        const spd = Math.random()*4+2;
+        _particles.push({
+          type:"spark", x:c.x, y:c.y,
+          vx:Math.cos(ang)*spd, vy:Math.sin(ang)*spd-2,
+          life:1, decay:Math.random()*.06+.04, size:Math.random()*2+1, gravity:.18
+        });
+      }
+    });
+  }
+
+  function frame() {
+    ctx.clearRect(0, 0, W, H);
+    spawn();
+    for (let i = _particles.length-1; i >= 0; i--) {
+      const p = _particles[i];
+      p.x += p.vx; p.y += p.vy;
+      if (p.gravity) p.vy += p.gravity;
+      p.life -= p.decay;
+      if (p.life <= 0) { _particles.splice(i,1); continue; }
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, p.life) * (p.type==="smoke" ? .45 : p.life);
+
+      if (p.type==="fire") {
+        const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
+        g.addColorStop(0,  `hsla(${p.hue+40},100%,95%,${p.life})`);
+        g.addColorStop(.3, `hsla(${p.hue+20},100%,70%,${p.life})`);
+        g.addColorStop(.7, `hsla(${p.hue},90%,45%,${p.life*.7})`);
+        g.addColorStop(1,  `hsla(${p.hue},80%,20%,0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size*(1+(1-p.life)*.5), 0, Math.PI*2);
+        ctx.fill();
+      } else if (p.type==="smoke") {
+        const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
+        g.addColorStop(0,  `rgba(160,190,210,${p.life*.4})`);
+        g.addColorStop(.6, `rgba(100,130,160,${p.life*.2})`);
+        g.addColorStop(1,  `rgba(60,80,100,0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size*(1+(1-p.life)), 0, Math.PI*2);
+        ctx.fill();
+      } else if (p.type==="spark") {
+        ctx.strokeStyle = `hsla(45,100%,${70+p.life*30}%,${p.life})`;
+        ctx.lineWidth = p.size; ctx.lineCap="round";
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x-p.vx*3, p.y-p.vy*3);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    _fxRaf = requestAnimationFrame(frame);
+  }
+
+  if (_fxRaf) cancelAnimationFrame(_fxRaf);
+  frame();
+}
+
+function stopFX() {
+  if (_fxRaf) { cancelAnimationFrame(_fxRaf); _fxRaf = null; }
+  _particles.length = 0;
+  const canvas = $("fxCanvas");
+  if (canvas) { const ctx=canvas.getContext("2d"); ctx.clearRect(0,0,canvas.width,canvas.height); }
 }
 
 // ═══════════════════════════════════════════════════
@@ -1461,7 +1584,7 @@ function buildSummary(result) {
       }
       return result.geo.status;
     })()],
-    ["Version",          "CogBlock V11"],
+    ["Version",          "CogBlock V12"],
     ["Test Duration",    formatDuration(result.testDurationMs)],
     ["Total Responses",  String(result.totalResponses)],
     ["S-PF Rating",      result.samnPerelli ? `${result.samnPerelli.score} — ${result.samnPerelli.label}` : "—"],
@@ -1494,9 +1617,13 @@ function showResultsPage(text) {
   const outcomeText = $("outcomeText");
   const summary  = $("summaryOverlay");
 
-  if (thinking) thinking.classList.remove("hidden");
+  if (thinking) {
+    thinking.classList.remove("hidden");
+    setTimeout(() => startFX(), 50);
+  }
 
   setTimeout(() => {
+    stopFX();
     if (thinking) thinking.classList.add("hidden");
 
     // Step 2 — Success / Failed (3s)
@@ -1555,6 +1682,7 @@ function goToStartPage() {
   ["thinkingOverlay","outcomeOverlay"].forEach(id => {
     const el = $(id); if (el) el.classList.add("hidden");
   });
+  stopFX();
   setStatus("Ready");
   showOnly("subjectOverlay");
 }
@@ -1645,7 +1773,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v11_admin.json"; a.click();
+  a.download = "cogblock_v12_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1655,6 +1783,8 @@ $("adminStartOverBtn2").onclick= () => startOverFlow();
 $("startBtn").onclick       = startTest;
 $("backToStartBtn").onclick = goToStartPage;
 $("startOverBtn").onclick   = startOverFlow;
+const mainBenchBtn = $("mainBenchmarkBtn");
+if (mainBenchBtn) mainBenchBtn.onclick = async () => { await runDeviceBenchmark(); };
 $("resultsBackBtn").onclick  = goToStartPage;
 $("resultsStartOverBtn").onclick = startOverFlow;
 $("resultsExportBtn").onclick= exportResults;
@@ -1704,7 +1834,7 @@ if (benchAdmin) benchAdmin.onclick = () => {
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("'Add to Home Screen' saves CogBlock V11 as an app for offline use.");
+  setStatus("'Add to Home Screen' saves CogBlock V12 as an app for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
