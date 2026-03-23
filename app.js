@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-//  CogBlock V7 — dots/lines layout rebuild
+//  CogBlock V8 — dots/lines layout rebuild
 // ═══════════════════════════════════════════════════
 
 const DEFAULTS = {
@@ -81,11 +81,11 @@ const SAMN_PERELLI = [
 
 // ─── Settings ───
 function loadSettings() {
-  const s = JSON.parse(localStorage.getItem("cogblock_v7_settings") || "null");
+  const s = JSON.parse(localStorage.getItem("cogblock_v8_settings") || "null");
   return s ? { ...DEFAULTS, ...s } : { ...DEFAULTS };
 }
 function saveSettings() {
-  localStorage.setItem("cogblock_v7_settings", JSON.stringify(settings));
+  localStorage.setItem("cogblock_v8_settings", JSON.stringify(settings));
 }
 let settings = loadSettings();
 
@@ -100,7 +100,7 @@ const state = {
   overloads: [],
   recoveries: [],
   recoveryCorrectCompleted: 0,
-  history: JSON.parse(localStorage.getItem("cogblock_v7_history") || "[]"),
+  history: JSON.parse(localStorage.getItem("cogblock_v8_history") || "[]"),
   totalTrials: 0,
   totalResponses: 0,     // every tap during paced phase (correct or wrong)
   totalCorrect: 0,       // correct across ALL phases
@@ -501,7 +501,7 @@ function finish() {
   };
 
   state.history.push(result);
-  localStorage.setItem("cogblock_v7_history", JSON.stringify(state.history));
+  localStorage.setItem("cogblock_v8_history", JSON.stringify(state.history));
   updateCPSDisplay(avg2);
   setProbeIdle();
 
@@ -531,7 +531,7 @@ function finish() {
     : "—";
 
   const text =
-`CogBlock V7  —  Test Results
+`CogBlock V8  —  Test Results
 ${hr}
 Date / Time:   ${new Date(result.time).toLocaleString()}
 Subject ID:    ${result.subjectId}
@@ -1171,14 +1171,14 @@ function exportResults() {
   const blob = new Blob([JSON.stringify({ settings, history: state.history }, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v7_results.json";
+  a.download = "cogblock_v8_results.json";
   a.click();
 }
 
 function emailResults() {
   const text = state.lastResultText || "No results available.";
   const body = encodeURIComponent(text);
-  window.location.href = `mailto:?subject=CogBlock V7 Results&body=${body}`;
+  window.location.href = `mailto:?subject=CogBlock V8 Results&body=${body}`;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1327,7 +1327,7 @@ $("resetAdminBtn").onclick   = () => { resetAdmin(); setStatus("Admin reset to d
 $("exportAdminBtn").onclick  = () => {
   const blob = new Blob([JSON.stringify(settings, null, 2)], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "cogblock_v7_admin.json"; a.click();
+  a.download = "cogblock_v8_admin.json"; a.click();
 };
 $("adminBackBtn").onclick     = () => goToStartPage();
 $("adminBackBtn2").onclick    = () => goToStartPage();
@@ -1347,7 +1347,7 @@ $("resultsEmailBtn").onclick = emailResults;
 window.addEventListener("beforeinstallprompt", e => {
   e.preventDefault(); deferredPrompt = e;
   $("installBtn").disabled = false;
-  setStatus("Install adds CogBlock V7 to your home screen for offline use.");
+  setStatus("Install adds CogBlock V8 to your home screen for offline use.");
 });
 $("installBtn").onclick = async () => {
   if (!deferredPrompt) {
