@@ -283,47 +283,75 @@ function patternToSVG(pattern, size = "large") {
 }
 
 // ─── Build a trial ───
-// Each trial: 6 top cells, each has a pattern (dots or lines).
-// Center probe has a pattern. Exactly one top cell matches the probe's count,
-// and its type is the OPPOSITE family (probe dots → top has lines, or vice versa).
-// The 6 response buttons correspond 1-to-1 with the 6 top positions.
-// Correct answer = the response button at the same position as the matching top cell.
+// Top cells: random mix of dots AND lines (not all same family).
+// Probe: dots or lines. Exactly one top cell matches probe count AND is opposite family.
+// All other top cells either have a different count, or if same count, same family as probe.
+// lastCorrectPos: the correct position from the previous trial — new trial must differ.
 
-function makeTrial(kind) {
-  for (let attempt = 0; attempt < 300; attempt++) {
+function makeTrial(kind, lastCorrectPos) {
+  for (let attempt = 0; attempt < 500; attempt++) {
     // Choose probe family and count
-    const probeFamily = Math.random() < 0.5 ? "dots" : "lines";
-    const probeCount  = randInt(1, 6);
+    const probeFamily  = Math.random() < 0.5 ? "dots" : "lines";
+    const probeCount   = randInt(1, 6);
     const probePattern = probeFamily === "dots" ? DOT_PATTERNS[probeCount] : LINE_PATTERNS[probeCount];
+    const oppFamily    = probeFamily === "dots" ? "lines" : "dots";
 
-    // Top cells: opposite family
-    const topFamily = probeFamily === "dots" ? "lines" : "dots";
-    const topPatterns = topFamily === "lines" ? LINE_PATTERNS : DOT_PATTERNS;
+    // Choose correct position — must differ from lastCorrectPos
+    const correctPos = (() => {
+      if (lastCorrectPos == null) return randInt(0, 5);
+      let p;
+      let tries = 0;
+      do { p = randInt(0, 5); tries++; } while (p === lastCorrectPos && tries < 20);
+      return p;
+    })();
 
-    // Assign 6 distinct counts to top positions (1–6, shuffled)
+    // Build 6 top cells: random mix of dots and lines
+    // correctPos cell: opposite family, probeCount
+    // Other cells: must NOT be (oppFamily + probeCount) — i.e. must not also be a correct answer
     const counts = shuffle([1, 2, 3, 4, 5, 6]);
-    // Exactly one top cell must have count === probeCount
-    const correctPos = randInt(0, 5); // 0–5 index into top grid
-    // Place probeCount at correctPos
+    // Ensure probeCount lands at correctPos
     const existingAt = counts.indexOf(probeCount);
-    // Swap so probeCount is at correctPos
     [counts[correctPos], counts[existingAt]] = [counts[existingAt], counts[correctPos]];
 
-    const topItems = counts.map(c => ({ count: c, pattern: topPatterns[c] }));
+    // Assign families: correctPos gets oppFamily; others get random family
+    // but if another cell has probeCount AND oppFamily it would be a second correct answer — reject
+    const families = [];
+    let valid = true;
+    for (let i = 0; i < 6; i++) {
+      if (i === correctPos) {
+        families.push(oppFamily);
+      } else {
+        // Randomly pick family; if this cell has probeCount, must NOT be oppFamily
+        let f;
+        if (counts[i] === probeCount) {
+          // Force same family as probe so it doesn't match
+          f = probeFamily;
+        } else {
+          f = Math.random() < 0.5 ? "dots" : "lines";
+        }
+        families.push(f);
+      }
+    }
 
-    // Validation: exactly one top cell matches probe count
-    const matches = topItems.filter(x => x.count === probeCount);
-    if (matches.length !== 1) continue;
-    if (topItems[correctPos].count !== probeCount) continue;
+    // Build topItems
+    const topItems = counts.map((c, i) => {
+      const fam = families[i];
+      return { count: c, family: fam, pattern: fam === "dots" ? DOT_PATTERNS[c] : LINE_PATTERNS[c] };
+    });
+
+    // Validation: exactly one cell is (oppFamily + probeCount)
+    const correctMatches = topItems.filter(x => x.count === probeCount && x.family === oppFamily);
+    if (correctMatches.length !== 1) continue;
+    if (topItems[correctPos].count !== probeCount || topItems[correctPos].family !== oppFamily) continue;
+    if (correctPos === lastCorrectPos) continue;
 
     return {
       kind,
       probePattern,
       probeCount,
       probeFamily,
-      topFamily,
-      topItems,       // array of 6 {count, pattern}
-      correctPos,     // 0–5, the index of correct response button
+      topItems,
+      correctPos,
       resolved: false
     };
   }
@@ -587,7 +615,8 @@ END REASON
 function openTrial(kind) {
   clearTimer();
   state.previous = state.current;
-  state.current  = makeTrial(kind);
+  const lastCorrectPos = state.current ? state.current.correctPos : null;
+  state.current  = makeTrial(kind, lastCorrectPos);
   state.trialOpenedAt = performance.now();
   renderTrial(state.current);
   updateMetrics();
@@ -775,68 +804,61 @@ function handleTap(index, btnEl) {
   }
 
   // ── Paced phase tap handling ──
-  // Late catch: response to PREVIOUS (missed) frame arriving in current frame window
-  if (state.previous && state.previous.kind === "paced" && !state.previous.resolved && trialMatches(state.previous, index)) {
-    state.previous.resolved = true;
-    state.totalResponses += 1;
-    const rt = performance.now() - state.trialOpenedAt; // time into current frame
-    const wasPostMiss = state.previousMissed;
+  const rt = performance.now() - state.trialOpenedAt;
+
+  if (state.previousMissed && rt < 600) {
+    // Fast response after a miss — assume it was meant for the PREVIOUS trial
     const lastDur = state.lastFrameDuration || state.duration;
+    const correctForLast = state.previous && !state.previous.resolved && trialMatches(state.previous, index);
 
-    if (rt < 600) {
-      // Fast response after miss — treating as late catch of previous correct
-      // Use effectiveRT = rt + lastFrameDuration for r calculation → slowdown
-      const effectiveRT = rt + lastDur;
-      applyPacingAdjustment(effectiveRT, true, state.duration);
-    } else {
-      // Slow — treat as normal correct on current frame
-      applyPacingAdjustment(rt, true, state.duration);
-    }
-
-    state.pacedRTs.push(rt);
-    state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced_late" });
+    state.totalResponses += 1;
     state.previousMissed = false;
     state.lastFrameDuration = null;
-    flashBtn(index, true);
-    if (recordAnswer(true)) return;
+
+    if (correctForLast) {
+      // Correct for last trial: effectiveRT = RT + lastDur → slowdown (faster than window)
+      state.previous.resolved = true;
+      const effectiveRT = rt + lastDur;
+      applyPacingAdjustment(effectiveRT, true, state.duration);
+      state.totalCorrect += 1;
+      state.pacedRTs.push(rt);
+      state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced_late_correct" });
+      flashBtn(index, true);
+      if (recordAnswer(true)) return;
+    } else {
+      // Wrong for last trial: +100ms slowdown
+      applyPacingAdjustment(null, false, state.duration);
+      state.totalIncorrect += 1;
+      state.pacedErrors += 1;
+      state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: false, phase: "paced_late_wrong" });
+      flashBtn(index, false);
+      if (recordAnswer(false)) return;
+    }
     return;
   }
 
-  // Response to CURRENT frame
+  // RT >= 600ms (or no preceding miss) — treat as response to CURRENT trial
+  state.previousMissed = false;
+  state.lastFrameDuration = null;
+
   if (state.current && state.current.kind === "paced" && !state.current.resolved && trialMatches(state.current, index)) {
     state.current.resolved = true;
     state.totalResponses += 1;
-    const rt = performance.now() - state.trialOpenedAt;
-    const wasPostMiss = state.previousMissed;
-
-    if (wasPostMiss && rt < 600) {
-      // Fast response on current frame after a miss on previous — use effectiveRT for r
-      const lastDur = state.lastFrameDuration || state.duration;
-      const effectiveRT = rt + lastDur;
-      applyPacingAdjustment(effectiveRT, true, state.duration);
-    } else {
-      // Normal correct — speedup/slowdown per formula
-      applyPacingAdjustment(rt, true, state.duration);
-    }
-
+    state.totalCorrect += 1;
+    applyPacingAdjustment(rt, true, state.duration);
     state.pacedRTs.push(rt);
     state.rtLog.push({ seq: state.rtLog.length + 1, rt, correct: true, phase: "paced" });
-    state.previousMissed = false;
-    state.lastFrameDuration = null;
     flashBtn(index, true);
     if (recordAnswer(true)) return;
     return;
   }
 
-  // Wrong response (no match)
+  // Wrong response (no match on current trial)
   state.totalResponses += 1;
+  state.totalIncorrect += 1;
   state.pacedErrors += 1;
-  const wasPostMissWrong = state.previousMissed;
-  // Wrong after miss: +100ms (already handled by applyPacingAdjustment wrong branch)
   applyPacingAdjustment(null, false, state.duration);
-  state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "paced" });
-  state.previousMissed = false;
-  state.lastFrameDuration = null;
+  state.rtLog.push({ seq: state.rtLog.length + 1, rt: null, correct: false, phase: "paced_wrong" });
   flashBtn(index, false);
   recordAnswer(false);
 }
